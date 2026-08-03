@@ -1,0 +1,6 @@
+{
+  "name": "Ethiopian Roads Administration ERP Dashboard",
+  "description": "A comprehensive responsive road construction project dashboard aligning with PMBOK 8th edition, EVM, and FIDIC standards for the Ethiopian Roads Administration.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
