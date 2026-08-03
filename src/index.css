@@ -1,0 +1,137 @@
+@import "tailwindcss";
+
+:root {
+  --bg-app: #f8fafc;
+  --bg-card: #ffffff;
+  --border-subtle: #e2e8f0;
+  --text-main: #0f172a;
+  --text-muted: #64748b;
+  --primary-color: #2563eb;
+}
+
+.dark {
+  --bg-app: #0f172a;
+  --bg-card: #1e293b;
+  --border-subtle: #334155;
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --primary-color: #3b82f6;
+}
+
+body {
+  background-color: var(--bg-app);
+  color: var(--text-main);
+  transition: background-color 0.3s ease, color 0.3s ease;
+  font-family: 'Times New Roman', Times, Baskerville, Playfair Display, serif !important;
+}
+
+html, body, div, span, p, a, button, input, select, option, textarea, table, tr, th, td, h1, h2, h3, h4, h5, h6 {
+  font-family: 'Times New Roman', Times, Baskerville, Playfair Display, serif !important;
+}
+
+/* Ensure great contrast and visibility for all input fields, even disabled ones */
+input:disabled, select:disabled {
+  color: #475569 !important;
+  opacity: 0.8;
+}
+.dark input:disabled, .dark select:disabled {
+  color: #94a3b8 !important;
+  opacity: 0.8;
+}
+
+/* Printable Document Layout Standards */
+@page {
+  size: portrait !important;
+  margin: 1in !important;
+}
+
+@media print {
+  /* Ensure all typography uses Times New Roman with normal spacing */
+  *, html, body, div, span, p, a, button, input, select, option, textarea, table, tr, th, td, h1, h2, h3, h4, h5, h6 {
+    font-family: 'Times New Roman', Times, Baskerville, Georgia, serif !important;
+    word-spacing: normal !important;
+    letter-spacing: normal !important;
+  }
+
+  /* Body text defaults to 12pt if not explicitly discernible, and Headings to 14pt */
+  body, p, span, div, td, th, li, a {
+    font-size: 12pt;
+    line-height: 1.4 !important;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-size: 14pt !important;
+    font-weight: bold !important;
+    line-height: 1.3 !important;
+    page-break-after: avoid !important;
+    page-break-inside: avoid !important;
+    margin-top: 14pt !important;
+    margin-bottom: 7pt !important;
+  }
+
+  /* Tables layout standard (portrait, wrapped text, bold first row, no overlap) */
+  table {
+    width: 100% !important;
+    max-width: 100% !important;
+    border-collapse: collapse !important;
+    table-layout: auto !important;
+    page-break-inside: avoid !important;
+    margin-top: 10px !important;
+    margin-bottom: 15px !important;
+  }
+
+  tr {
+    page-break-inside: avoid !important;
+    page-break-after: auto !important;
+  }
+
+  /* Table borders must be fully visible and intact */
+  table, th, td {
+    border: 1px solid #000000 !important;
+  }
+
+  th, td {
+    padding: 6px 8px !important;
+    text-align: left !important;
+    vertical-align: middle !important;
+    /* Text Wrapping: cell expands vertically to contain all content */
+    white-space: normal !important;
+    word-wrap: break-word !important;
+    word-break: normal !important;
+    overflow-wrap: break-word !important;
+    /* Cell boundaries: all text remains inside cell borders */
+    overflow: visible !important;
+    box-sizing: border-box !important;
+  }
+
+  /* First Row of any table: entire first row bold */
+  table tr:first-child,
+  table tr:first-child td,
+  table tr:first-child th,
+  table thead tr,
+  table thead tr th,
+  table thead tr td {
+    font-weight: bold !important;
+    background-color: #f1f5f9 !important;
+    color: #000000 !important;
+  }
+
+  /* Prevent overlapping and clean borders */
+  * {
+    max-width: 100% !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .print-break-inside-avoid, section {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+}
+* {
+  font-family: 'Times New Roman', Times, serif !important;
+}
