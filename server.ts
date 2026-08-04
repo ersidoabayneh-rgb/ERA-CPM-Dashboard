@@ -46,6 +46,18 @@ function isTimeoutError(error: any) {
   app.use(express.json({ limit: '100mb' })); // support extremely large multi-device project payloads safely
   app.use(express.urlencoded({ limit: '100mb', extended: true }));
 
+  // Cross-Origin Resource Sharing (CORS) middleware for eradashboard.com.et and external domains
+  app.use((req, res, next) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
+    if (req.method === "OPTIONS") {
+      res.sendStatus(200);
+      return;
+    }
+    next();
+  });
+
   // In-memory Rate Limiter to prevent brute force or DDoS on API endpoints
   const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
   const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
