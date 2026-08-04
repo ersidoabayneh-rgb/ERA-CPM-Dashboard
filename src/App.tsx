@@ -5,6 +5,9 @@ import {
   FolderOpen, 
   CheckSquare, 
   UserCheck, 
+  UserPlus,
+  Settings,
+  Trash2,
   LogOut, 
   User as UserIcon,
   Sun,
@@ -462,6 +465,15 @@ export default function App() {
     return deduplicateUsers(usersListState);
   };
 
+  const isMasterAdmin = currentUserObj?.role === 'admin' || 
+                        currentUserObj?.role === 'master_admin' || 
+                        currentUserObj?.username === 'proj_1781786415663' ||
+                        (currentUserObj?.username && currentUserObj.username.toLowerCase().includes('ersido'));
+
+  const [pendingUserPopups, setPendingUserPopups] = useState<User[]>([]);
+  const seenPendingUsersRef = useRef<Set<string>>(new Set());
+  const globalWsRef = useRef<WebSocket | null>(null);
+
   const saveUsers = (u: User[]) => {
     const deduped = deduplicateUsers(u);
     setUsersListState(deduped);
@@ -469,6 +481,12 @@ export default function App() {
     safeSyncUsers(deduped).catch(err => {
       console.warn('Failed to sync users to cloud:', err);
     });
+
+    if (globalWsRef.current && globalWsRef.current.readyState === WebSocket.OPEN) {
+      try {
+        globalWsRef.current.send(JSON.stringify({ type: 'users_update', data: deduped }));
+      } catch (e) {}
+    }
   };
 
   // User Access Administration draft state for pending changes
@@ -542,6 +560,48 @@ export default function App() {
       
       alert(`User "${username}" has been successfully approved, assigned, and activated!`);
     }
+  };
+
+  const handleApproveUserPopup = (userToApprove: User, assignedRole: string, assignedProjects: string[]) => {
+    const allUsers = getUsers();
+    const updatedUsers = allUsers.map(u => {
+      if (u.username.toLowerCase() === userToApprove.username.toLowerCase()) {
+        return {
+          ...u,
+          status: 'Active' as const,
+          isPendingApproval: false,
+          role: (assignedRole || u.role || 'editor') as any,
+          accessibleProjects: assignedProjects,
+          approvedBy: currentUserObj?.username,
+          approvedAt: new Date().toISOString()
+        };
+      }
+      return u;
+    });
+
+    saveUsers(updatedUsers);
+    setPendingUserPopups(prev => prev.filter(p => p.username.toLowerCase() !== userToApprove.username.toLowerCase()));
+    alert(`User "${userToApprove.username}" has been successfully APPROVED and activated!`);
+  };
+
+  const handleRejectUserPopup = (userToReject: User) => {
+    if (!confirm(`Are you sure you want to reject and remove the registration request for "${userToReject.username}"?`)) return;
+
+    const allUsers = getUsers();
+    const updatedUsers = allUsers.filter(u => u.username.toLowerCase() !== userToReject.username.toLowerCase());
+
+    saveUsers(updatedUsers);
+    setPendingUserPopups(prev => prev.filter(p => p.username.toLowerCase() !== userToReject.username.toLowerCase()));
+  };
+
+  const handleConfigureUserPopup = (userToConfig: User) => {
+    setSelectedAdminUser(userToConfig.username);
+    setShowAdmin(true);
+    setPendingUserPopups(prev => prev.filter(p => p.username.toLowerCase() !== userToConfig.username.toLowerCase()));
+  };
+
+  const handleDismissUserPopup = (userToDismiss: User) => {
+    setPendingUserPopups(prev => prev.filter(p => p.username.toLowerCase() !== userToDismiss.username.toLowerCase()));
   };
 
   const updateUserDraft = (username: string, field: keyof User, value: any) => {
@@ -894,65 +954,237 @@ let isBatchSyncRunning = false;
     checkQueue();
     fetchSyncLogs();
 
+    const mergeAndApplyUsers = (cloudUsers: User[]) => {
+      if (!cloudUsers || !Array.isArray(cloudUsers)) return;
+      setUsersListState(prev => {
+        const map = new Map<string, User>();
+        prev.forEach(u => { if (u?.username) map.set(u.username.toLowerCase(), u); });
+        cloudUsers.forEach(u => {
+          if (u?.username) {
+            const lower = u.username.toLowerCase();
+            const existing = map.get(lower);
+            map.set(lower, existing ? { ...existing, ...u } : u);
+          }
+        });
+        const merged = deduplicateUsers(Array.from(map.values()));
+        safeSetItem('era_users_v28', JSON.stringify(merged));
+
+        // Check for new pending user approvals for admin popup
+        const isMasterAdmin = currentUserObj?.role === 'admin' || 
+                              currentUserObj?.role === 'master_admin' || 
+                              currentUserObj?.username === 'proj_1781786415663' ||
+                              (currentUserObj?.username && currentUserObj.username.toLowerCase().includes('ersido'));
+
+        if (isMasterAdmin) {
+          const pendingList = merged.filter(u => u.isPendingApproval);
+          const newUnseen = pendingList.filter(u => !seenPendingUsersRef.current.has(u.username.toLowerCase()));
+          if (newUnseen.length > 0) {
+            newUnseen.forEach(u => seenPendingUsersRef.current.add(u.username.toLowerCase()));
+            setPendingUserPopups(prev => {
+              const mapPop = new Map<string, User>();
+              prev.forEach(p => mapPop.set(p.username.toLowerCase(), p));
+              newUnseen.forEach(p => mapPop.set(p.username.toLowerCase(), p));
+              return Array.from(mapPop.values());
+            });
+          }
+        }
+
+        // Auto-update logged-in user state if admin approved or updated their account
+        if (currentUserObj && currentUserObj.username) {
+          const updatedSelf = merged.find(u => u.username.toLowerCase() === currentUserObj.username.toLowerCase());
+          if (updatedSelf) {
+            if (
+              updatedSelf.isPendingApproval !== currentUserObj.isPendingApproval ||
+              updatedSelf.status !== currentUserObj.status ||
+              updatedSelf.role !== currentUserObj.role ||
+              JSON.stringify(updatedSelf.accessibleProjects) !== JSON.stringify(currentUserObj.accessibleProjects) ||
+              JSON.stringify(updatedSelf.assignedPages) !== JSON.stringify(currentUserObj.assignedPages)
+            ) {
+              setCurrentUserObj(updatedSelf);
+              safeSetItem('era_current_user_obj', JSON.stringify(updatedSelf));
+            }
+          }
+        }
+
+        return merged;
+      });
+    };
+
+    // Handle real-time Open-Ended WebSocket connection and fallback SSE stream
+    let eventSource: EventSource | null = null;
+    let wsSocket: WebSocket | null = null;
+    let wsReconnectTimeout: any = null;
+
+    const handleRealtimePayload = (payload: any) => {
+      if (payload.type === 'users_update' && Array.isArray(payload.data)) {
+        mergeAndApplyUsers(payload.data);
+      } else if (payload.type === 'approvals_update' && Array.isArray(payload.data)) {
+        setPendingApprovals(payload.data);
+        safeSetItem('era_appr_v28', JSON.stringify(payload.data));
+      } else if (payload.type === 'project_update' && payload.data) {
+        const incoming = syncProjectPayment(payload.data);
+        setProjects(prev => {
+          const idx = prev.findIndex(p => p.id === incoming.id);
+          let updated;
+          if (idx === -1) updated = [...prev, incoming];
+          else {
+            updated = [...prev];
+            updated[idx] = incoming;
+          }
+          safeSetItem('era_proj_v28', JSON.stringify(updated));
+          return updated;
+        });
+      } else if (payload.type === 'project_delete' && payload.data?.id) {
+        setProjects(prev => {
+          const updated = prev.filter(p => p.id !== payload.data.id);
+          safeSetItem('era_proj_v28', JSON.stringify(updated));
+          return updated;
+        });
+      } else if (payload.type === 'config_update' && payload.data) {
+        if (payload.data.pmos) setPmos(payload.data.pmos);
+        if (payload.data.directorates) setProgramDirectorates(payload.data.directorates);
+      }
+    };
+
+    const initWebSocket = () => {
+      try {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}/ws`;
+        wsSocket = new WebSocket(wsUrl);
+        globalWsRef.current = wsSocket;
+
+        wsSocket.onopen = () => {
+          console.log('[Real-Time WS] Open-ended WebSocket connected!');
+        };
+
+        wsSocket.onmessage = (event) => {
+          try {
+            const payload = JSON.parse(event.data);
+            handleRealtimePayload(payload);
+          } catch (e) {}
+        };
+
+        wsSocket.onerror = () => {
+          /* reconnect in onclose */
+        };
+
+        wsSocket.onclose = () => {
+          console.log('[Real-Time WS] WebSocket disconnected, reconnecting in 2s...');
+          globalWsRef.current = null;
+          clearTimeout(wsReconnectTimeout);
+          wsReconnectTimeout = setTimeout(initWebSocket, 2000);
+        };
+      } catch (err) {
+        console.warn('[Real-Time WS] WebSocket failed, relying on SSE:', err);
+      }
+    };
+
+    let sseReconnectTimeout: any = null;
+
+    const initSSE = () => {
+      try {
+        if (eventSource) {
+          try { eventSource.close(); } catch (e) {}
+          eventSource = null;
+        }
+
+        eventSource = new EventSource('/api/events');
+
+        eventSource.onopen = () => {
+          console.log('[Real-Time SSE] SSE event stream connected successfully.');
+        };
+
+        eventSource.onmessage = (event) => {
+          try {
+            if (!event.data) return;
+            const payload = JSON.parse(event.data);
+            handleRealtimePayload(payload);
+          } catch (err) {}
+        };
+
+        eventSource.onerror = () => {
+          if (eventSource && eventSource.readyState === EventSource.CLOSED) {
+            console.log('[Real-Time SSE] SSE connection closed. Retrying stream in 3s...');
+            try { eventSource.close(); } catch (e) {}
+            eventSource = null;
+            clearTimeout(sseReconnectTimeout);
+            sseReconnectTimeout = setTimeout(() => {
+              if (navigator.onLine) initSSE();
+            }, 3000);
+          }
+        };
+      } catch (e) {
+        console.warn('[Real-Time SSE] SSE initialization fallback error:', e);
+      }
+    };
+
+    initWebSocket();
+    initSSE();
+
+    const pollAllBackendData = () => {
+      if (!navigator.onLine) return;
+      safeFetchUsers().then(cloudUsers => {
+        if (cloudUsers) mergeAndApplyUsers(cloudUsers);
+      }).catch(() => {});
+
+      safeFetchApprovals().then(cloudApprovals => {
+        if (cloudApprovals) {
+          setPendingApprovals(cloudApprovals);
+          safeSetItem('era_appr_v28', JSON.stringify(cloudApprovals));
+        }
+      }).catch(() => {});
+
+      safeFetchProjects().then(cloudProjects => {
+        if (cloudProjects && cloudProjects.length > 0) {
+          const normalized = cloudProjects.map(syncProjectPayment);
+          setProjects(prev => {
+            const merged = [...prev];
+            normalized.forEach(inc => {
+              const idx = merged.findIndex(p => p.id === inc.id);
+              if (idx === -1) merged.push(inc);
+              else merged[idx] = inc;
+            });
+            safeSetItem('era_proj_v28', JSON.stringify(merged));
+            return merged;
+          });
+        }
+      }).catch(() => {});
+
+      safeFetchConfig().then(cloudConfig => {
+        if (cloudConfig) {
+          if (cloudConfig.pmos) setPmos(cloudConfig.pmos);
+          if (cloudConfig.directorates) setProgramDirectorates(cloudConfig.directorates);
+        }
+      }).catch(() => {});
+    };
+
+    // Run initial sync on mount
+    pollAllBackendData();
+
+    // Sync initial local users to backend so new installations share default users
+    safeSyncUsers(usersListState).catch(() => {});
+
     const interval = setInterval(() => {
       checkQueue();
       const suspended = isSyncSuspended();
       setSyncSuspended(suspended);
       if (navigator.onLine) {
         triggerOfflineQueueSync();
-        if (suspended) {
-          console.log('[DB Sync Fallback] Sync is suspended. Fetching updates from server database...');
-          safeFetchProjects().then(cloudData => {
-            if (cloudData && cloudData.length > 0) {
-              const normalized = cloudData.map(syncProjectPayment);
-              setProjects(prevProjects => {
-                const merged = [...prevProjects];
-                normalized.forEach(incoming => {
-                  const idx = merged.findIndex(p => p.id === incoming.id);
-                  if (idx === -1) {
-                    merged.push(incoming);
-                  } else {
-                    const existing = merged[idx];
-                    const existingTime = existing.lastModifiedAt ? new Date(existing.lastModifiedAt).getTime() : 0;
-                    const incomingTime = incoming.lastModifiedAt ? new Date(incoming.lastModifiedAt).getTime() : 0;
-                    if (incomingTime >= existingTime) {
-                      merged[idx] = incoming;
-                    }
-                  }
-                });
-                safeSetItem('era_proj_v28', JSON.stringify(merged));
-                return merged;
-              });
-            }
-          }).catch(err => console.warn('Periodic projects pull fallback failed:', err));
-
-          safeFetchUsers().then(cloudUsers => {
-            if (cloudUsers) {
-              setUsersListState(cloudUsers);
-              safeSetItem('era_users_v28', JSON.stringify(cloudUsers));
-            }
-          }).catch(err => console.warn('Periodic users pull fallback failed:', err));
-
-          safeFetchApprovals().then(cloudApprovals => {
-            if (cloudApprovals) {
-              setPendingApprovals(cloudApprovals);
-              safeSetItem('era_appr_v28', JSON.stringify(cloudApprovals));
-            }
-          }).catch(err => console.warn('Periodic approvals pull fallback failed:', err));
-
-          safeFetchConfig().then(cloudConfig => {
-            if (cloudConfig) {
-              if (cloudConfig.pmos) setPmos(cloudConfig.pmos);
-              if (cloudConfig.directorates) setProgramDirectorates(cloudConfig.directorates);
-            }
-          }).catch(err => console.warn('Periodic config pull fallback failed:', err));
-        }
+        pollAllBackendData();
       }
-    }, 15000); // Check every 15s
+    }, 8000); // Check every 8s
 
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      if (eventSource) {
+        try { eventSource.close(); } catch (e) {}
+      }
+      if (wsSocket) {
+        try { wsSocket.close(); } catch (e) {}
+      }
+      clearTimeout(wsReconnectTimeout);
+      clearTimeout(sseReconnectTimeout);
       clearInterval(interval);
     };
   }, []);
@@ -4907,6 +5139,171 @@ let isBatchSyncRunning = false;
           </motion.div>
         </div>
       )}
+
+      {/* Real-Time Immediate New User Registration Approval Pop-Up Modal */}
+      <AnimatePresence>
+        {isMasterAdmin && pendingUserPopups.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[9999] flex items-center justify-center p-4 overflow-y-auto"
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="bg-white dark:bg-slate-850 border-2 border-amber-500/80 rounded-3xl shadow-2xl max-w-lg w-full overflow-hidden relative space-y-0"
+            >
+              {/* Animated Header */}
+              <div className="bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 p-5 text-white flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center border border-white/30 text-white shrink-0 animate-bounce">
+                    <UserPlus className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-black uppercase tracking-widest bg-black/20 px-2 py-0.5 rounded-full border border-white/20 inline-block mb-0.5">
+                      🔔 REAL-TIME APPROVAL REQUEST
+                    </span>
+                    <h3 className="text-base font-black tracking-tight leading-none">
+                      New User Registration Received!
+                    </h3>
+                  </div>
+                </div>
+                <span className="bg-white text-amber-700 text-xs font-black px-2.5 py-1 rounded-full border shadow-xs">
+                  {pendingUserPopups.length} Pending
+                </span>
+              </div>
+
+              {/* Modal Body */}
+              {(() => {
+                const activePending = pendingUserPopups[0];
+                if (!activePending) return null;
+
+                return (
+                  <div className="p-6 space-y-5">
+                    <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 rounded-2xl p-4 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 bg-white dark:bg-slate-800 border-2 border-amber-400 rounded-full flex items-center justify-center text-amber-600 font-black text-lg shadow-sm">
+                          👤
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-black text-slate-900 dark:text-white">
+                            {activePending.username}
+                          </h4>
+                          <p className="text-2xs font-semibold text-amber-700 dark:text-amber-400 flex items-center gap-1 mt-0.5">
+                            <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping inline-block" />
+                            Status: Pending Admin Activation
+                          </p>
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-800 px-2.5 py-1 rounded-xl border border-slate-200 dark:border-slate-700 uppercase">
+                        Role: {activePending.role || 'editor'}
+                      </span>
+                    </div>
+
+                    {/* Role Selector */}
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block uppercase tracking-wider">
+                        Assign Role for Network Access:
+                      </label>
+                      <select
+                        id={`popup-role-${activePending.username}`}
+                        defaultValue={activePending.role || 'editor'}
+                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-amber-500"
+                      >
+                        <option value="editor">✏️ Editor (View & Submit Contract Updates)</option>
+                        <option value="viewer">👁️ Viewer (Read Only Access)</option>
+                        <option value="approver">Approver (Review & Approve Drafts)</option>
+                        <option value="directorate_admin">Directorate Admin</option>
+                        <option value="pmo_admin">PMO Admin</option>
+                        <option value="admin">⭐ Master Admin (Full System Control)</option>
+                      </select>
+                    </div>
+
+                    {/* Contracts Checklist */}
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex justify-between items-center uppercase tracking-wider">
+                        <span>Assign Accessible Contracts:</span>
+                        <span className="text-[10px] text-slate-400 font-normal normal-case">
+                          ({projects.length} Total Contracts Available)
+                        </span>
+                      </label>
+                      <div className="max-h-36 overflow-y-auto border border-slate-200 dark:border-slate-700/80 rounded-2xl p-2.5 bg-slate-50/50 dark:bg-slate-900/50 space-y-1">
+                        <div className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 pb-1 border-b border-slate-200 dark:border-slate-800">
+                          ✓ All contracts accessible automatically for Admin role
+                        </div>
+                        {projects.map(proj => (
+                          <label key={proj.id} className="flex items-center gap-2 text-xs font-semibold p-1.5 hover:bg-white dark:hover:bg-slate-800 rounded-lg cursor-pointer transition">
+                            <input
+                              type="checkbox"
+                              defaultChecked={true}
+                              data-project-id={proj.id}
+                              className="rounded border-slate-300 text-amber-500 focus:ring-amber-500 accent-amber-500"
+                            />
+                            <span className="truncate text-slate-800 dark:text-slate-200 font-bold">{proj.name}</span>
+                            <span className="text-[9px] text-slate-400 ml-auto font-mono">({proj.id})</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="pt-2 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const roleSelect = document.getElementById(`popup-role-${activePending.username}`) as HTMLSelectElement;
+                          const selectedRole = roleSelect ? roleSelect.value : (activePending.role || 'editor');
+                          
+                          const checkboxes = document.querySelectorAll(`input[data-project-id]`) as NodeListOf<HTMLInputElement>;
+                          const checkedProjectIds: string[] = [];
+                          checkboxes.forEach(cb => {
+                            const pid = cb.getAttribute('data-project-id');
+                            if (cb.checked && pid) checkedProjectIds.push(pid);
+                          });
+
+                          handleApproveUserPopup(activePending, selectedRole, checkedProjectIds);
+                        }}
+                        className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black py-3 rounded-2xl text-xs uppercase tracking-wider shadow-lg shadow-emerald-600/20 transition cursor-pointer flex items-center justify-center gap-2"
+                      >
+                        <CheckCircle className="w-4 h-4" />
+                        Approve User Now
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleConfigureUserPopup(activePending)}
+                        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-3 rounded-2xl text-xs uppercase tracking-wider shadow-md transition cursor-pointer flex items-center justify-center gap-2"
+                      >
+                        <Settings className="w-4 h-4" />
+                        Configure in Admin
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleRejectUserPopup(activePending)}
+                        className="w-full bg-slate-100 dark:bg-slate-800 hover:bg-rose-100 dark:hover:bg-rose-950/40 text-rose-600 dark:text-rose-400 font-extrabold py-2.5 rounded-2xl text-xs uppercase transition border border-rose-200 dark:border-rose-900/40 cursor-pointer flex items-center justify-center gap-1.5"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        Reject Request
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleDismissUserPopup(activePending)}
+                        className="w-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 font-extrabold py-2.5 rounded-2xl text-xs uppercase transition cursor-pointer text-center"
+                      >
+                        Dismiss / Later
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Interactive User Guide Manual Modal */}
       <UserGuideManualModal 
