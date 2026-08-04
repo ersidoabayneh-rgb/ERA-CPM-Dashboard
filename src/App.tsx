@@ -1189,6 +1189,23 @@ let isBatchSyncRunning = false;
     };
   }, []);
 
+  // Effect to automatically synchronize and prompt master admin with any previous or new pending users
+  useEffect(() => {
+    if (isMasterAdmin && usersListState.length > 0) {
+      const pendingList = usersListState.filter(u => u.isPendingApproval || u.status === 'Inactive' || u.status === 'Pending');
+      const newUnseen = pendingList.filter(u => !seenPendingUsersRef.current.has(u.username.toLowerCase()));
+      if (newUnseen.length > 0) {
+        newUnseen.forEach(u => seenPendingUsersRef.current.add(u.username.toLowerCase()));
+        setPendingUserPopups(prev => {
+          const mapPop = new Map<string, User>();
+          prev.forEach(p => mapPop.set(p.username.toLowerCase(), p));
+          newUnseen.forEach(p => mapPop.set(p.username.toLowerCase(), p));
+          return Array.from(mapPop.values());
+        });
+      }
+    }
+  }, [isMasterAdmin, usersListState, currentUserObj]);
+
   // Helper to synchronize 'Total Todate Bill Summary' and 'Remaining' with series sums, and calculate G = F + E
   const syncProjectPayment = (project: Project): Project => {
     const isDB = project.contractType === 'DB';
