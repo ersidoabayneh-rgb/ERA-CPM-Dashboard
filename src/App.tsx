@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence, animate } from 'motion/react';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 import { 
   HardHat, 
   FolderOpen, 
@@ -5327,6 +5328,9 @@ let isBatchSyncRunning = false;
         isOpen={isUserGuideOpen}
         onClose={() => setIsUserGuideOpen(false)}
       />
+
+      {/* Vercel Speed Insights */}
+      <SpeedInsights />
 
     </div>
   );
