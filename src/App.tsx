@@ -42,6 +42,7 @@ export function hasApprovalCredentials(user: User | null): boolean {
   if (!user) return false;
   if (
     user.role === 'master_admin' ||
+    user.role === 'cpm_admin' ||
     user.role === 'admin' ||
     user.role === 'approver' ||
     user.role === 'directorate_admin' ||
@@ -56,7 +57,7 @@ export function hasApprovalCredentials(user: User | null): boolean {
 
 export function canUserViewPage(user: User | null, pageId: string): boolean {
   if (!user) return false;
-  if (user.role === 'master_admin' || user.role === 'admin' || user.username === 'proj_1781786415663') {
+  if (user.role === 'master_admin' || user.role === 'cpm_admin' || user.role === 'admin' || user.username === 'proj_1781786415663') {
     return true;
   }
   if (pageId === 'history' || pageId === 'settings') {
@@ -70,7 +71,7 @@ export function canUserViewPage(user: User | null, pageId: string): boolean {
 
 export function canUserEditPage(user: User | null, pageId: string): boolean {
   if (!user) return false;
-  if (user.role === 'master_admin' || user.role === 'admin' || user.username === 'proj_1781786415663') {
+  if (user.role === 'master_admin' || user.role === 'cpm_admin' || user.role === 'admin' || user.username === 'proj_1781786415663') {
     return true;
   }
   if (user.role === 'viewer') {
@@ -85,7 +86,7 @@ export function canUserEditPage(user: User | null, pageId: string): boolean {
 export function canUserApproveRequest(user: User | null, req: ApprovalRequest, projectsList?: Project[]): boolean {
   if (!user) return false;
   
-  if (user.role === 'master_admin' || user.role === 'admin' || user.username === 'proj_1781786415663') {
+  if (user.role === 'master_admin' || user.role === 'cpm_admin' || user.role === 'admin' || user.username === 'proj_1781786415663') {
     return true;
   }
 
@@ -154,7 +155,6 @@ import eraLogo from './assets/logo.png';
 
 import { defaultProjectTemplate, blankProjectTemplate, generateKpiAllocated } from './data/defaultProject';
 import { safeSyncProject, safeDeleteProject, safeFetchProjects, safeSyncUsers, safeFetchUsers, safeSyncApprovals, safeFetchApprovals, safeSyncConfig, safeFetchConfig, reactivateSync, isSyncSuspended } from './lib/apiSync';
-import { fetchDriveDatabase, uploadDriveDatabase } from './lib/driveSync';
 import { getAccessToken } from './lib/auth';
 import { safeSetItem } from './lib/storage';
 
@@ -269,7 +269,7 @@ export default function App() {
   // Enforce project access restriction
   useEffect(() => {
     if (!currentUserObj || !currentProject) return;
-    const isMasterAdmin = currentUserObj.role === 'admin' || currentUserObj.role === 'master_admin' || currentUserObj.username === 'proj_1781786415663';
+    const isMasterAdmin = currentUserObj.role === 'admin' || currentUserObj.role === 'master_admin' || currentUserObj.role === 'cpm_admin' || currentUserObj.username === 'proj_1781786415663';
     if (!isMasterAdmin) {
       let isAllowed = true;
       if (currentUserObj.role === 'directorate_admin') {
@@ -290,7 +290,7 @@ export default function App() {
   // Enforce page viewing scope: auto-switch to first assigned page if activeTab is unassigned
   useEffect(() => {
     if (!currentUserObj) return;
-    const isMaster = currentUserObj.role === 'admin' || currentUserObj.role === 'master_admin' || currentUserObj.username === 'proj_1781786415663';
+    const isMaster = currentUserObj.role === 'admin' || currentUserObj.role === 'master_admin' || currentUserObj.role === 'cpm_admin' || currentUserObj.username === 'proj_1781786415663';
     if (!isMaster && currentUserObj.assignedPages && Array.isArray(currentUserObj.assignedPages) && currentUserObj.assignedPages.length > 0) {
       if (!currentUserObj.assignedPages.includes(activeTab)) {
         setActiveTab(currentUserObj.assignedPages[0]);
@@ -878,27 +878,7 @@ let isBatchSyncRunning = false;
       setIsBatchSyncing(true);
       console.log(`Starting high-priority manual batch synchronization of ${queue.length} pending local changes...`);
 
-      // 1. Direct high-priority post of all changes to the remote URL
-      try {
-        await fetch('https://lin1.ethiotelecom.et:8443/smb/database/list/domainId/3255', {
-          method: 'POST',
-          mode: 'no-cors',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            action: 'batch_sync',
-            priority: 'high',
-            timestamp: new Date().toISOString(),
-            projects: queue,
-          }),
-        });
-        console.log('Successfully posted high-priority batch data directly to remote server.');
-      } catch (err) {
-        console.warn('Direct batch sync post failed or was intercepted:', err);
-      }
-
-      // 2. Clear/Synchronize local queue updates to normal db
+      // Clear/Synchronize local queue updates to backend Express REST API
       const remaining: Project[] = [];
       const results = await Promise.allSettled(queue.map(proj => safeSyncProject(proj, true)));
       results.forEach((res, index) => {
@@ -914,9 +894,9 @@ let isBatchSyncRunning = false;
       fetchSyncLogs();
 
       if (remaining.length === 0) {
-        alert('High-priority batch synchronization completed successfully! All pending changes have been synchronized.');
+        alert('Batch synchronization completed successfully! All pending changes have been synchronized with the database.');
       } else {
-        alert(`Batch synchronization finished. Direct remote transfer was completed, but ${remaining.length} items could not be synchronized to secondary database layers.`);
+        alert(`Batch synchronization finished. ${remaining.length} items could not be synchronized and remain in the offline queue.`);
       }
     } catch (error) {
       console.error('Error during manual batch synchronization:', error);
@@ -1138,14 +1118,30 @@ let isBatchSyncRunning = false;
         if (cloudProjects && cloudProjects.length > 0) {
           const normalized = cloudProjects.map(syncProjectPayment);
           setProjects(prev => {
+            let deletedIds: string[] = [];
+            try {
+              const delStr = localStorage.getItem('era_deleted_project_ids') || '[]';
+              deletedIds = JSON.parse(delStr);
+            } catch {}
+
             const merged = [...prev];
             normalized.forEach(inc => {
+              if (deletedIds.includes(inc.id)) return;
               const idx = merged.findIndex(p => p.id === inc.id);
-              if (idx === -1) merged.push(inc);
-              else merged[idx] = inc;
+              if (idx === -1) {
+                merged.push(inc);
+              } else {
+                const existing = merged[idx];
+                const existingTime = existing.lastModifiedAt ? new Date(existing.lastModifiedAt).getTime() : 0;
+                const incTime = inc.lastModifiedAt ? new Date(inc.lastModifiedAt).getTime() : 0;
+                if (incTime >= existingTime) {
+                  merged[idx] = inc;
+                }
+              }
             });
-            safeSetItem('era_proj_v28', JSON.stringify(merged));
-            return merged;
+            const filtered = merged.filter(p => !deletedIds.includes(p.id));
+            safeSetItem('era_proj_v28', JSON.stringify(filtered));
+            return filtered;
           });
         }
       }).catch(() => {});
@@ -1514,83 +1510,8 @@ let isBatchSyncRunning = false;
   }, []);
 
 
-  // --- Google Drive Real-Time Independent Server Engine ---
-  useEffect(() => {
-    let syncInterval: any;
+  // --- Google Drive Real-Time Sync is Disabled ---
 
-    const performDriveSync = async () => {
-      const token = await getAccessToken();
-      if (!token) return;
-
-      try {
-        const driveProjects = await fetchDriveDatabase(token);
-        if (driveProjects && driveProjects.length > 0) {
-          const normalizedCloud = driveProjects.map(syncProjectPayment);
-          
-          let hasIncomingChanges = false;
-
-          setProjects(prevProjects => {
-            const merged = [...prevProjects];
-            let hasChanges = false;
-            
-            normalizedCloud.forEach(incoming => {
-              const idx = merged.findIndex(p => p.id === incoming.id);
-              if (idx === -1) {
-                merged.push(incoming);
-                hasChanges = true;
-                hasIncomingChanges = true;
-              } else {
-                const existing = merged[idx];
-                const existingTime = existing.lastModifiedAt ? new Date(existing.lastModifiedAt).getTime() : 0;
-                const incomingTime = incoming.lastModifiedAt ? new Date(incoming.lastModifiedAt).getTime() : 0;
-                if (incomingTime > existingTime) {
-                  merged[idx] = incoming;
-                  hasChanges = true;
-                  hasIncomingChanges = true;
-                }
-              }
-            });
-
-            if (hasChanges) {
-              safeSetItem('era_proj_v28', JSON.stringify(merged));
-              return merged;
-            }
-            return prevProjects;
-          });
-        }
-      } catch (err) {
-        console.warn('Independent Drive server sync failed to pull', err);
-      }
-    };
-
-    const handleLocalMutation = async () => {
-      const stored = localStorage.getItem('era_proj_v28');
-      if (stored) {
-        // 1. Google Drive push
-        try {
-          const token = await getAccessToken().catch(() => null);
-          if (token) {
-            const projs = JSON.parse(stored);
-            await uploadDriveDatabase(token, projs);
-            console.log('Successfully pushed local changes to Google Drive independent server');
-          }
-        } catch (err) {
-          console.error('Failed to push changes to independent Google Drive server', err);
-        }
-      }
-    };
-
-    // Run sync every 10 seconds unconditionally as long as we have a token
-    syncInterval = setInterval(performDriveSync, 10000);
-    performDriveSync();
-    
-    window.addEventListener('local_project_mutated', handleLocalMutation);
-
-    return () => {
-      if (syncInterval) clearInterval(syncInterval);
-      window.removeEventListener('local_project_mutated', handleLocalMutation);
-    };
-  }, []);
 
   // Update light/dark modes
   const handleToggleDarkMode = () => {
@@ -1614,7 +1535,7 @@ let isBatchSyncRunning = false;
   };
 
   const handleSelectProject = (id: string) => {
-    const isMasterAdmin = currentUserObj?.role === 'admin' || currentUserObj?.role === 'master_admin' || currentUserObj?.username === 'proj_1781786415663';
+    const isMasterAdmin = currentUserObj?.role === 'admin' || currentUserObj?.role === 'master_admin' || currentUserObj?.role === 'cpm_admin' || currentUserObj?.username === 'proj_1781786415663';
     if (!isMasterAdmin) {
       const proj = projects.find(pr => pr.id === id);
       if (currentUserObj?.role === 'directorate_admin') {
@@ -2059,7 +1980,7 @@ let isBatchSyncRunning = false;
         );
       } catch (err) {
         console.error('Failed to submit approval request:', err);
-        alert('Failed to submit approval request. Please check your network connection.');
+        alert('Failed to submit approval request. Please try again.');
       }
       return; // Do NOT persist into the main live database!
     }
@@ -2387,17 +2308,6 @@ let isBatchSyncRunning = false;
                     await safeSyncProject(p);
                   }
                   
-                  try {
-                    fetch('https://lin1.ethiotelecom.et:8443/smb/database/list/domainId/3255', {
-                      method: 'POST',
-                      mode: 'no-cors',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ action: 'save_all', timestamp: new Date().toISOString() })
-                    }).catch(() => {});
-                  } catch (e) {
-                    console.warn('External DB sync failed', e);
-                  }
-                  
                   alert('All inputs and changes have been successfully synchronized to the database.');
                 } catch (err) {
                   console.error('Failed to sync to database:', err);
@@ -2559,17 +2469,6 @@ let isBatchSyncRunning = false;
                         };
                         await safeSyncProject(weightedProject);
                         
-                        try {
-                          fetch('https://lin1.ethiotelecom.et:8443/smb/database/list/domainId/3255', {
-                            method: 'POST',
-                            mode: 'no-cors',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ action: 'save_project', projectId: weightedProject.id, timestamp: new Date().toISOString() })
-                          }).catch(() => {});
-                        } catch (e) {
-                          console.warn('External DB sync failed', e);
-                        }
-                        
                         setCurrentProject(weightedProject);
                         const updatedProjs = projects.map(p => p.id === weightedProject.id ? weightedProject : p);
                         setProjects(updatedProjs);
@@ -2597,17 +2496,6 @@ let isBatchSyncRunning = false;
                         setPendingApprovals(updatedList);
                         safeSetItem('era_appr_v28', JSON.stringify(updatedList));
                         await safeSyncApprovals(updatedList);
-                        
-                        try {
-                          fetch('https://lin1.ethiotelecom.et:8443/smb/database/list/domainId/3255', {
-                            method: 'POST',
-                            mode: 'no-cors',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ action: 'submit_approval', timestamp: new Date().toISOString() })
-                          }).catch(() => {});
-                        } catch (e) {
-                          console.warn('External DB sync failed', e);
-                        }
 
                         alert(
                           '🚀 DATA SUBMITTED SUCCESSFULLY!\n\n' +
@@ -2616,7 +2504,7 @@ let isBatchSyncRunning = false;
                         );
                       } catch (err) {
                         console.error('Failed to submit approval request:', err);
-                        alert('Failed to submit approval request. Please check your internet connection.');
+                        alert('Failed to submit approval request. Please try again.');
                       }
                     }
                   }}
@@ -3329,6 +3217,7 @@ let isBatchSyncRunning = false;
                   project={currentProject}
                   onProjectUpdate={handleProjectUpdate}
                   isAdmin={currentUserObj?.role === 'admin' || currentUserObj?.role === 'master_admin' || currentUserObj?.username === 'proj_1781786415663'}
+                  currentUserObj={currentUserObj}
                 />
               )}
 
@@ -3455,7 +3344,7 @@ let isBatchSyncRunning = false;
       )}
 
       {/* Admin User Management Modal Overlay */}
-      {showAdmin && (currentUserObj?.role === 'admin' || currentUserObj?.username === 'proj_1781786415663') && (
+      {showAdmin && (currentUserObj?.role === 'admin' || currentUserObj?.role === 'master_admin' || currentUserObj?.username === 'proj_1781786415663') && currentUserObj?.role !== 'cpm_admin' && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-3">
           <motion.div 
             initial={{ opacity: 0, scale: 0.95 }}
@@ -3560,6 +3449,7 @@ let isBatchSyncRunning = false;
                     <>
                       <option value="admin">Admin</option>
                       <option value="master_admin">Master Admin</option>
+                      <option value="cpm_admin">CPM Admin (All Projects)</option>
                       <option value="directorate_admin">Directorate Admin</option>
                     </>
                   )}
@@ -3572,7 +3462,7 @@ let isBatchSyncRunning = false;
                   <option value="Inactive">🔴 Inactive</option>
                 </select>
               </div>
-              {newUserRole !== 'master_admin' && newUserRole !== 'admin' && (
+              {newUserRole !== 'master_admin' && newUserRole !== 'admin' && newUserRole !== 'cpm_admin' && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
                   <div className="flex flex-col gap-1">
                     <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wide">Assign Directorate {newUserRole !== 'directorate_admin' ? '(Optional)' : ''}</label>
@@ -4024,6 +3914,7 @@ let isBatchSyncRunning = false;
                                           <>
                                             <option value="admin">Admin</option>
                                             <option value="master_admin">Master Admin</option>
+                                            <option value="cpm_admin">CPM Admin (All Projects)</option>
                                             <option value="directorate_admin">Directorate Admin</option>
                                           </>
                                         )}
@@ -4422,11 +4313,11 @@ let isBatchSyncRunning = false;
               </div>
             </div>
 
-            {/* Standalone Backend Live Sync Manager */}
+            {/* Firebase Cloud Firestore Live Sync Manager */}
             <div className="border-t border-slate-150 dark:border-slate-700/60 pt-4 space-y-4">
               <h4 className="text-xs font-extrabold text-slate-800 dark:text-zinc-100 uppercase tracking-wider block flex items-center justify-between">
                 <span className="flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400">
-                  <Database className="w-4 h-4" /> ⚡ Standalone Relational Express Backend Sync
+                  <Database className="w-4 h-4" /> ⚡ Standalone Firebase Cloud Firestore Sync
                 </span>
                 <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase ${!syncSuspended ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400' : 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-400'}`}>
                   {!syncSuspended ? (
@@ -4435,7 +4326,7 @@ let isBatchSyncRunning = false;
                     </>
                   ) : (
                     <>
-                      <WifiOff className="w-2.5 h-2.5" /> Paused (Connection Rate Control)
+                      <WifiOff className="w-2.5 h-2.5" /> Paused (Rate Control)
                     </>
                   )}
                 </span>
@@ -4452,7 +4343,7 @@ let isBatchSyncRunning = false;
                     />
                     <div className="text-2xs font-semibold text-slate-700 dark:text-slate-300">
                       <span className="block font-bold">Continuous Sync Mode</span>
-                      <span className="block text-[10px] text-slate-400 font-normal">Keep active connection to standalone Express backend</span>
+                      <span className="block text-[10px] text-slate-400 font-normal">Keep active sync to Firebase Cloud Firestore</span>
                     </div>
                   </label>
 
@@ -4470,18 +4361,18 @@ let isBatchSyncRunning = false;
                   <div className="bg-amber-50/50 dark:bg-amber-950/10 border border-amber-100 dark:border-amber-900/40 rounded-xl p-2.5 text-[11px] text-amber-700 dark:text-amber-300 flex items-start gap-2">
                     <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
                     <p className="leading-snug">
-                      <strong>Sync connection paused:</strong> Connection was paused. Click <strong>Force Reactivate Live Sync</strong> or enable <strong>Continuous Sync Mode</strong> to resume active multi-location sync.
+                      <strong>Sync paused:</strong> Sync rate control engaged. Click <strong>Force Reactivate Live Sync</strong> or enable <strong>Continuous Sync Mode</strong> to resume active multi-location sync.
                     </p>
                   </div>
                 )}
               </div>
             </div>
 
-            {/* Real-time Relational Database Sync Manager */}
+            {/* Real-time Firebase Firestore Sync Manager */}
             <div className="border-t border-slate-150 dark:border-slate-700/60 pt-4 space-y-4">
               <h4 className="text-xs font-extrabold text-slate-800 dark:text-zinc-100 uppercase tracking-wider block flex items-center justify-between">
                 <span className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400">
-                  <Database className="w-4 h-4" /> ⚡️ Relational Database Sync Manager
+                  <Database className="w-4 h-4" /> ⚡️ Firebase Cloud Firestore Sync Manager
                 </span>
                 <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase ${isOnline ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400' : 'bg-rose-100 text-rose-800 dark:bg-rose-950/40 dark:text-rose-400'}`}>
                   {isOnline ? (
@@ -4523,7 +4414,7 @@ let isBatchSyncRunning = false;
                       disabled={isBatchSyncing || !isOnline || offlineQueueLength === 0}
                       onClick={handleBatchSyncNow}
                       className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 disabled:opacity-50 text-white rounded-xl px-3 py-1.5 text-2xs font-bold uppercase cursor-pointer transition shadow-sm"
-                      title="Force manual high-priority transmission of all offline queue changes directly to the remote server"
+                      title="Force manual high-priority transmission of all offline queue changes directly to Firebase Firestore"
                     >
                       <Zap className={`w-3 h-3 ${isBatchSyncing ? 'animate-bounce' : ''}`} />
                       {isBatchSyncing ? 'Batching...' : 'Batch Sync Now'}
@@ -4541,7 +4432,7 @@ let isBatchSyncRunning = false;
 
                 {/* Database Sync Diagnostics Logs */}
                 <div className="space-y-1.5">
-                  <span className="text-2xs font-extrabold text-slate-400 uppercase tracking-wider block">Backend Transaction & Validation Logs</span>
+                  <span className="text-2xs font-extrabold text-slate-400 uppercase tracking-wider block">Firebase Firestore Event & Validation Logs</span>
                   <div className="max-h-48 overflow-y-auto border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-850 rounded-xl divide-y divide-slate-100 dark:divide-slate-800">
                     {syncLogs.length === 0 ? (
                       <p className="text-center py-6 text-2xs text-slate-400 font-medium font-mono">No synchronization events recorded yet.</p>

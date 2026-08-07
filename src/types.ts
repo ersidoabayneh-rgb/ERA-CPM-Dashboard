@@ -229,6 +229,18 @@ export interface IssueTransferRecord {
   transferredBy?: string;
 }
 
+export interface IssueHistoryRecord {
+  id: string;
+  timestamp: string; // Formatted timestamp e.g. "2026-08-04 14:30"
+  user: string; // User who made the change
+  previousStatus?: string;
+  newStatus: string;
+  stage?: string;
+  changeType?: 'Status Change' | 'Transfer Handover' | 'Creation' | 'Details Edit' | 'Lessons Learned Review' | string;
+  notes?: string;
+  bottleneck?: string;
+}
+
 export interface IssueLogItem {
   id: string;
   issueCode: string;
@@ -249,6 +261,15 @@ export interface IssueLogItem {
   currentStage: string;
   latestProgressSummary: string;
   currentBottleneck?: string;
+  
+  // Lessons learned & retrospective review
+  lessonsLearned?: string;
+  lessonsLearnedUpdatedBy?: string;
+  lessonsLearnedUpdatedAt?: string;
+  reviewNotes?: string;
+  
+  // Status history timeline & user change log
+  history?: IssueHistoryRecord[];
   
   // Transfer history records
   transfers: IssueTransferRecord[];
@@ -349,7 +370,7 @@ export interface RiskItem {
 export interface User {
   username: string;
   password?: string;
-  role: 'master_admin' | 'directorate_admin' | 'pmo_admin' | 'admin' | 'editor' | 'viewer' | 'approver';
+  role: 'master_admin' | 'cpm_admin' | 'directorate_admin' | 'pmo_admin' | 'admin' | 'editor' | 'viewer' | 'approver';
   accessibleProjects: string[]; // Project IDs
   assignedPages?: string[]; // Tab/Page IDs this user is authorized to edit
   hasApprovalCredential?: boolean; // Whether user has approval authority before data incorporation
