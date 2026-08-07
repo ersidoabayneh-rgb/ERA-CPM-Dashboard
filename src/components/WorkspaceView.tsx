@@ -278,30 +278,10 @@ export default function WorkspaceView({ projects = [], onRestoreProjects }: Work
       }
 
       setIsBatchSyncing(true);
-      setSyncStatus('Initiating manual, high-priority batch synchronization...');
+      setSyncStatus('Initiating batch synchronization with backend server...');
       setSyncError(null);
 
-      // 1. Direct high-priority post of all changes to the remote URL
-      try {
-        await fetch('https://lin1.ethiotelecom.et:8443/smb/database/list/domainId/3255', {
-          method: 'POST',
-          mode: 'no-cors',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            action: 'batch_sync',
-            priority: 'high',
-            timestamp: new Date().toISOString(),
-            projects: queue,
-          }),
-        });
-        console.log('Successfully posted high-priority batch data directly to remote server.');
-      } catch (err) {
-        console.warn('Direct batch sync post failed or was intercepted:', err);
-      }
-
-      // 2. Clear/Synchronize local queue updates to normal db (Cloud SQL, REST)
+      // Clear/Synchronize local queue updates to backend Express REST API
       const remaining: any[] = [];
       for (const proj of queue) {
         try {
@@ -319,11 +299,11 @@ export default function WorkspaceView({ projects = [], onRestoreProjects }: Work
       window.dispatchEvent(new Event('storage'));
 
       if (remaining.length === 0) {
-        setSyncStatus('High-priority batch synchronization completed successfully! All pending changes have been synchronized.');
-        alert('High-priority batch synchronization completed successfully! All pending changes have been synchronized.');
+        setSyncStatus('Batch synchronization completed successfully! All pending changes have been synchronized.');
+        alert('Batch synchronization completed successfully! All pending changes have been synchronized.');
       } else {
-        setSyncError(`Batch synchronization finished. Direct remote transfer was completed, but ${remaining.length} items could not be synchronized to secondary database layers.`);
-        alert(`Batch synchronization finished. Direct remote transfer was completed, but ${remaining.length} items could not be synchronized to secondary database layers.`);
+        setSyncError(`Batch synchronization finished, but ${remaining.length} items could not be synchronized and remain in the offline queue.`);
+        alert(`Batch synchronization finished, but ${remaining.length} items could not be synchronized and remain in the offline queue.`);
       }
     } catch (error) {
       console.error('Error during manual batch synchronization:', error);
@@ -336,16 +316,16 @@ export default function WorkspaceView({ projects = [], onRestoreProjects }: Work
 
   return (
     <div className="space-y-6">
-      {/* Header and Connection Status */}
+      {/* Header */}
       <div className="bg-gradient-to-r from-slate-900 to-slate-800 dark:from-slate-950 dark:to-slate-900 text-white p-6 rounded-3xl shadow-sm border border-slate-800 space-y-4">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
             <div className="flex items-center gap-2">
               <ShieldCheck className="h-6 w-6 text-emerald-400" />
-              <h2 className="text-xl font-bold tracking-tight">Independent Cloud Database Vault</h2>
+              <h2 className="text-xl font-bold tracking-tight">Firebase Cloud Firestore Vault</h2>
             </div>
             <p className="text-sm text-slate-400 mt-1">
-              Store, secure, and restore your active contracts database directly to your personalized Google Drive cloud.
+              Store, secure, and synchronize your active contracts database directly with Firebase Cloud Firestore.
             </p>
           </div>
           {!authUser ? (
@@ -354,7 +334,7 @@ export default function WorkspaceView({ projects = [], onRestoreProjects }: Work
               className="bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold py-2.5 px-5 rounded-2xl shadow-lg shadow-blue-900/30 transition-all flex items-center gap-2 cursor-pointer"
             >
               <Database className="h-4 w-4" />
-              Connect Google Drive & Cloud
+              Connect Workspace Account
             </button>
           ) : (
             <div className="flex items-center gap-2 bg-slate-800/80 px-4 py-2 rounded-2xl border border-slate-700">
@@ -374,118 +354,34 @@ export default function WorkspaceView({ projects = [], onRestoreProjects }: Work
           {/* Cloud Synchronization and Backup panel */}
           <div className="lg:col-span-2 space-y-6">
             
-            {/* Google Drive Vault Card */}
+            {/* Firebase Cloud Firestore Vault Card */}
             <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-150 dark:border-slate-800 shadow-sm flex flex-col justify-between space-y-6">
               <div className="space-y-4">
-                <div className="flex items-center gap-2.5 text-blue-600 dark:text-blue-400">
-                  <FileJson className="h-5 w-5" />
-                  <h3 className="font-bold text-lg text-slate-800 dark:text-white">Google Drive Independent Storage</h3>
+                <div className="flex items-center gap-2.5 text-emerald-600 dark:text-emerald-400">
+                  <Database className="h-5 w-5" />
+                  <h3 className="font-bold text-lg text-slate-800 dark:text-white">Firebase Cloud Firestore Database</h3>
                 </div>
                 
                 <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-                  By maintaining a persistent snapshot copy of your active contracts inside your personal Google Drive account (<code className="bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-rose-600 dark:text-rose-400">ERA_Active_Contracts_Database.json</code>), your database runs fully independently. 
-                  Even if the application is rebuilt or republish updates are made, you can instantly sync back your customized project structures.
+                  Your contract data, users, and approval workflows are automatically synchronized and securely persisted with <strong>Firebase Cloud Firestore</strong>. Google Drive integration has been disabled as requested.
                 </p>
 
-                <div className="p-4 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-100 dark:border-slate-850 space-y-3">
-                  <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">Vault File Status</div>
-                  {checkingBackup ? (
-                    <div className="flex items-center gap-2 text-sm text-slate-500">
-                      <RefreshCw className="h-4 w-4 animate-spin" />
-                      Checking Google Drive snapshot state...
-                    </div>
-                  ) : backupFileInfo ? (
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400 font-medium">
-                        <CheckCircle2 className="h-4.5 w-4.5" />
-                        Backup Vault file is active and synced in your Google Drive!
-                      </div>
-                      <div className="text-xs text-slate-500 grid grid-cols-1 sm:grid-cols-2 gap-1 pl-6">
-                        <div>File Name: <span className="font-semibold text-slate-700 dark:text-slate-300">{backupFileInfo.name}</span></div>
-                        <div>Last Modified: <span className="font-semibold text-slate-700 dark:text-slate-300">{new Date(backupFileInfo.modifiedTime || '').toLocaleString()}</span></div>
-                        <div>File ID: <span className="font-mono">{backupFileInfo.id}</span></div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2 text-sm text-amber-600 dark:text-amber-400 font-medium">
-                      <AlertCircle className="h-4.5 w-4.5" />
-                      No independent snapshot found in your Google Drive yet. Create one below to secure your data.
-                    </div>
-                  )}
-                </div>
-
-                {/* Status or Success Messages */}
-                {(syncStatus || syncError) && (
-                  <div className={`p-4 rounded-2xl text-sm border ${
-                    syncError 
-                      ? 'bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400 border-red-100 dark:border-red-900/50' 
-                      : 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border-emerald-100 dark:border-emerald-900/50'
-                  }`}>
-                    <div className="flex items-center gap-2.5">
-                      {syncError ? <AlertCircle className="h-5 w-5 shrink-0" /> : <CheckCircle2 className="h-5 w-5 shrink-0" />}
-                      <span className="font-medium">{syncError || syncStatus}</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-wrap gap-3">
-                <div className="flex gap-4">
-                  <button
-                    onClick={handleBackupToDrive}
-                    disabled={backupLoading || restoreLoading}
-                    className="bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800/40 text-white font-semibold py-3 px-5 rounded-xl transition-all flex items-center gap-2 cursor-pointer text-sm"
-                  >
-                    {backupLoading ? (
-                      <RefreshCw className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <CloudUpload className="h-4 w-4" />
-                    )}
-                    Backup Database to Google Drive
-                  </button>
-
-                  <button
-                    onClick={handleRestoreFromDrive}
-                    disabled={backupLoading || restoreLoading || !backupFileInfo}
-                    className="bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:bg-slate-100/40 dark:disabled:bg-slate-800/40 disabled:text-slate-400 text-slate-800 dark:text-slate-200 font-semibold py-3 px-5 rounded-xl transition-all flex items-center gap-2 cursor-pointer text-sm border border-slate-200 dark:border-slate-700"
-                  >
-                    {restoreLoading ? (
-                      <RefreshCw className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <CloudDownload className="h-4 w-4" />
-                    )}
-                    Restore Database from Backup
-                  </button>
-                </div>
-
-                <div className="mt-6 p-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 dark:bg-emerald-950/20 w-full">
-                  <div className="flex items-center justify-between mb-2">
+                <div className="p-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 dark:bg-emerald-950/20 w-full space-y-2">
+                  <div className="flex items-center justify-between">
                     <h4 className="font-semibold text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
-                      <Database className="h-5 w-5" />
-                      Google Cloud Database (Real-Time Multi-Network Sync)
+                      <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+                      Real-Time Cloud Synchronization Active
                     </h4>
                     <div className="flex items-center gap-2 text-xs font-medium text-green-600 dark:text-green-400">
                       <span className="relative flex h-2 w-2">
                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
                         <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
                       </span>
-                      Connected to ersidoabayneh@gmail.com
+                      Firebase Active
                     </div>
                   </div>
                   <p className="text-sm text-emerald-700/80 dark:text-emerald-200/70">
-                    <strong>Online & Federated:</strong> This application is securely connected to the standalone backend database (Cloud SQL PostgreSQL) of <strong>ersidoabayneh@gmail.com</strong>. All active contracts, users, and approval workflows are shared and updated in real-time across other networks and team members' browsers automatically.
-                  </p>
-                </div>
-
-                <div className="mt-4 p-4 rounded-xl border border-blue-500/30 bg-blue-500/10 dark:bg-blue-900/20 w-full">
-                  <div className="flex items-center justify-between mb-2">
-                    <h4 className="font-semibold text-blue-800 dark:text-blue-300 flex items-center gap-2">
-                      <Database className="h-5 w-5" />
-                      Google Drive Primary Database Server
-                    </h4>
-                  </div>
-                  <p className="text-sm text-blue-700/80 dark:text-blue-200/70 mb-3">
-                    <strong>Independent Server Vault:</strong> The application is now fully configured to run its database independently on the <strong>ersidoabayneh@gmail.com</strong> Google Drive cloud. Your active contracts and data are continuously and securely synchronized as the central source of truth.
+                    <strong>Online & Federated:</strong> Connected to Firebase Cloud Firestore. All project updates, financial allocations, and user workflows are synced live with full IndexedDB offline persistence enabled.
                   </p>
                 </div>
               </div>
@@ -515,7 +411,7 @@ export default function WorkspaceView({ projects = [], onRestoreProjects }: Work
               <div className="p-4 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-100 dark:border-slate-850 space-y-3">
                 <div className="flex justify-between items-center text-xs font-bold text-slate-500 uppercase tracking-wider">
                   <span>Pending Changes Queue</span>
-                  <span className="text-[10px] lowercase text-slate-400">Target: https://lin1.ethiotelecom.et:8443/...</span>
+                  <span className="text-[10px] lowercase text-slate-400">Backend API Sync</span>
                 </div>
                 {offlineQueue.length === 0 ? (
                   <div className="flex items-center gap-2.5 text-sm text-emerald-600 dark:text-emerald-400 font-medium py-2">
@@ -560,63 +456,40 @@ export default function WorkspaceView({ projects = [], onRestoreProjects }: Work
 
           </div>
 
-          {/* Drive Recent Files column */}
+          {/* Cloud Firestore Engine Status Column */}
           <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-150 dark:border-slate-800 shadow-sm space-y-4">
             <div className="flex justify-between items-center">
               <h3 className="font-bold text-slate-800 dark:text-white flex items-center gap-2 text-base">
                 <Database className="h-4 w-4 text-emerald-500" />
-                Drive Storage Explorer
+                Firebase Cloud Engine
               </h3>
-              <button 
-                onClick={() => token && loadDriveFiles(token)}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition"
-                title="Refresh File List"
-              >
-                <RefreshCw className="h-4 w-4" />
-              </button>
+              <span className="bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-[10px] px-2.5 py-1 rounded-full font-bold uppercase">
+                Active
+              </span>
             </div>
 
-            {loadingFiles ? (
-              <div className="space-y-2 py-4">
-                <div className="h-4 bg-slate-100 dark:bg-slate-850 rounded animate-pulse w-3/4" />
-                <div className="h-4 bg-slate-100 dark:bg-slate-850 rounded animate-pulse w-5/6" />
-                <div className="h-4 bg-slate-100 dark:bg-slate-850 rounded animate-pulse w-2/3" />
+            <div className="space-y-3 text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+              <div className="p-3 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-100 dark:border-slate-850 space-y-2">
+                <div className="font-bold text-slate-700 dark:text-slate-200">Database ID:</div>
+                <div className="font-mono text-[11px] text-emerald-600 dark:text-emerald-400 bg-white dark:bg-slate-900 p-2 rounded-xl border border-slate-200 dark:border-slate-800 truncate">
+                  (default)
+                </div>
               </div>
-            ) : (
-              <div className="space-y-2.5 max-h-[300px] overflow-y-auto pr-1">
-                {recentFiles.map((file: any) => {
-                  const isBackupFile = file.name === 'ERA_Active_Contracts_Database.json';
-                  return (
-                    <div 
-                      key={file.id} 
-                      className={`p-3 rounded-2xl border transition-all ${
-                        isBackupFile 
-                          ? 'bg-blue-50/50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-900/50' 
-                          : 'bg-slate-50 dark:bg-slate-950 border-slate-150 dark:border-slate-850'
-                      }`}
-                    >
-                      <div className="flex justify-between items-start gap-2">
-                        <p className={`text-sm font-bold truncate ${isBackupFile ? 'text-blue-700 dark:text-blue-400' : 'text-slate-700 dark:text-slate-300'}`}>
-                          {file.name}
-                        </p>
-                        {isBackupFile && (
-                          <span className="bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-300 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase shrink-0">
-                            Database Vault
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex justify-between items-center text-[10px] text-slate-400 dark:text-slate-500 mt-2">
-                        <span>{file.mimeType.split('.').pop() || 'File'}</span>
-                        <span>{file.modifiedTime ? new Date(file.modifiedTime).toLocaleDateString() : ''}</span>
-                      </div>
-                    </div>
-                  );
-                })}
-                {recentFiles.length === 0 && (
-                  <p className="text-xs text-slate-400 py-6 text-center">No files found in Google Drive.</p>
-                )}
+
+              <div className="p-3 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-100 dark:border-slate-850 space-y-2">
+                <div className="font-bold text-slate-700 dark:text-slate-200">IndexedDB Persistence:</div>
+                <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-semibold">
+                  <CheckCircle2 className="h-4 w-4" /> Enabled (Offline Ready)
+                </div>
               </div>
-            )}
+
+              <div className="p-3 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-100 dark:border-slate-850 space-y-2">
+                <div className="font-bold text-slate-700 dark:text-slate-200">Google Drive:</div>
+                <div className="text-slate-400 font-medium">
+                  Disabled
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Email integration column */}

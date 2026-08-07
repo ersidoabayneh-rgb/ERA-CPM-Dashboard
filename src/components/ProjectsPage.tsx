@@ -133,11 +133,18 @@ export default function ProjectsPage({
 
   const isMasterAdmin = currentUserObj?.role === 'admin' || 
                         currentUserObj?.role === 'master_admin' || 
+                        currentUserObj?.role === 'cpm_admin' ||
                         currentUserObj?.role === 'directorate_admin' || 
                         currentUserObj?.role === 'pmo_admin' || 
                         currentUserObj?.username === 'proj_1781786415663' ||
                         (currentUserObj?.username && currentUserObj.username.toLowerCase().includes('ersido'));
   const canManageStatus = isMasterAdmin;
+  const canAccessUserAdmin = (currentUserObj?.role === 'admin' || 
+                              currentUserObj?.role === 'master_admin' || 
+                              currentUserObj?.role === 'directorate_admin' || 
+                              currentUserObj?.role === 'pmo_admin' || 
+                              currentUserObj?.username === 'proj_1781786415663') && 
+                             currentUserObj?.role !== 'cpm_admin';
 
   const pendingUserSignupsCount = allUsers ? allUsers.filter(u => u.isPendingApproval).length : 0;
   
@@ -450,14 +457,14 @@ export default function ProjectsPage({
               </button>
             )}
 
-            {(isMasterAdmin || currentUserObj.role === 'directorate_admin' || currentUserObj.role === 'pmo_admin') && (
+            {canAccessUserAdmin && (
               <button 
                 onClick={onOpenAdmin}
                 className="flex items-center gap-1 bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-xl text-xs font-bold transition relative"
               >
                 <UserCheck className="w-3.5 h-3.5" />
                 Admin
-                {isMasterAdmin && pendingUserSignupsCount > 0 && (
+                {pendingUserSignupsCount > 0 && (
                   <span className="absolute -top-1.5 -right-1 bg-rose-600 text-white rounded-full text-[9px] w-4 h-4 flex items-center justify-center animate-pulse font-black">
                     {pendingUserSignupsCount}
                   </span>
@@ -507,7 +514,7 @@ export default function ProjectsPage({
         </header>
 
         {/* Prominent Admin Self-Registration Alert Banner */}
-        {isMasterAdmin && pendingUserSignupsCount > 0 && (
+        {canAccessUserAdmin && pendingUserSignupsCount > 0 && (
           <motion.div 
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -537,134 +544,6 @@ export default function ProjectsPage({
               <span>➜</span>
             </button>
           </motion.div>
-        )}
-
-        {/* Online Peer bar / Stateful connection hub */}
-        {false && onlineUsers.length > 0 && (
-          <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-5 rounded-2xl shadow-sm space-y-4">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-                <div>
-                  <h3 className="text-xs font-black uppercase text-slate-800 dark:text-slate-200 tracking-wider">
-                    Online ERP Network Contributors
-                  </h3>
-                  <p className="text-[10px] text-slate-400">
-                    Live peer sessions detected. Click a reviewer to trace their edits or filter similar metrics across contracts.
-                  </p>
-                </div>
-              </div>
-              
-              <div className="flex flex-wrap gap-2">
-                {onlineUsers.map((user, idx) => {
-                  const roleLookup: Record<string, { title: string; focus: 'contractType' | 'classification'; value: string; desc: string }> = {
-                    'Abebe_Mesele': { 
-                      title: 'Supervising Engineer', 
-                      focus: 'contractType', 
-                      value: 'DB', 
-                      desc: 'Currently auditing contractor pavement layers on Design-Build active contracts.'
-                    },
-                    'Sileshi_Kassa': { 
-                      title: 'Lead QS Auditor', 
-                      focus: 'classification', 
-                      value: 'Expressway', 
-                      desc: 'Performing price adjustment and certified IPC valuations on Major Expressways.'
-                    },
-                    'Hiwot_Abay': { 
-                      title: 'Regional Director', 
-                      focus: 'classification', 
-                      value: 'Trunk Road', 
-                      desc: 'Reviewing ROW clearing and environmental safety indexes on Trunk Roads.'
-                    }
-                  };
-                  const roleObj = roleLookup[user] || { 
-                    title: 'Contract Consultant', 
-                    focus: 'contractType', 
-                    value: 'DBB', 
-                    desc: 'Monitoring CPM works on Design-Bid-Build networks.'
-                  };
-                  const isSelected = selectedPeer === user;
-                  return (
-                    <button
-                      key={`${user}-${idx}`}
-                      onClick={() => {
-                        if (isSelected) {
-                          setSelectedPeer(null);
-                          setSimilarityFilter({ type: 'none', value: null });
-                        } else {
-                          setSelectedPeer(user);
-                          setSimilarityFilter({ type: roleObj.focus, value: roleObj.value });
-                        }
-                      }}
-                      className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all duration-200 hover:scale-102 ${
-                        isSelected 
-                          ? 'bg-blue-600 text-white border-blue-600 shadow-sm' 
-                          : 'bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-350 border-slate-200/60 dark:border-slate-700 hover:border-blue-500 hover:text-blue-500'
-                      }`}
-                    >
-                      <div className={`w-2 h-2 rounded-full ${isSelected ? 'bg-white' : 'bg-emerald-500'} animate-pulse`} />
-                      <span>{user.replace('_', ' ')}</span>
-                      <span className={`text-[10px] font-normal ${isSelected ? 'text-blue-100' : 'text-slate-400 dark:text-slate-500'}`}>
-                        ({roleObj.title})
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Selected Peer Inspector / Similar Values Interlinker info row */}
-            {selectedPeer && (
-              <div className="p-3.5 bg-blue-500/5 dark:bg-blue-400/5 rounded-xl border border-blue-500/10 space-y-2 text-xs md:flex md:items-center md:justify-between md:gap-4 md:space-y-0 text-slate-600 dark:text-slate-350">
-                <div className="flex items-start gap-2.5">
-                  <span className="text-xl mt-0.5" role="img" aria-label="peer">🕵️‍♂️</span>
-                  <div>
-                    <p className="font-extrabold text-blue-600 dark:text-blue-400">
-                      Trace Path: {selectedPeer.replace('_', ' ')} • {
-                        selectedPeer === 'Abebe_Mesele' ? 'Supervising Engineer' : selectedPeer === 'Sileshi_Kassa' ? 'Lead QS Auditor' : 'Regional Director'
-                      }
-                    </p>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400/90 mt-0.5">
-                      {
-                        selectedPeer === 'Abebe_Mesele' ? 'Specifically monitoring pavement layer work programs. Interactive Filter: Tracing similar contracts with Design-Build (DB) structures.' : 
-                        selectedPeer === 'Sileshi_Kassa' ? 'Valuing certifiable quantities. Interactive Filter: Tracing similar contracts categorized as Expressways.' : 
-                        'Overseeing ROW obstructions and utilities. Interactive Filter: Tracing similar contracts classified as Trunk Roads.'
-                      }
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => {
-                    setSelectedPeer(null);
-                    setSimilarityFilter({ type: 'none', value: null });
-                  }}
-                  className="px-3 py-1 bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-[10px] font-black uppercase text-rose-500 hover:text-rose-600 transition"
-                >
-                  Clear Link Map
-                </button>
-              </div>
-            )}
-
-            {/* General similarity tag banner to guide users */}
-            {similarityFilter.type !== 'none' && !selectedPeer && (
-              <div className="p-3 bg-indigo-50/50 dark:bg-indigo-500/5 text-[11px] text-indigo-700 dark:text-indigo-400 px-3.5 py-2 rounded-xl border border-indigo-500/10 flex items-center justify-between gap-4">
-                <span className="flex items-center gap-1.5 flex-1 leading-normal">
-                  <span className="w-2 h-2 rounded-full bg-indigo-500" />
-                  Showing interlinked contracts where <strong>{
-                    similarityFilter.type === 'contractType' ? 'Contract Type is' : 
-                    similarityFilter.type === 'classification' ? 'Classification is' : 
-                    similarityFilter.type === 'client' ? 'Client is' : 'Contractor is'
-                  } "{similarityFilter.value}"</strong>
-                </span>
-                <button
-                  onClick={() => setSimilarityFilter({ type: 'none', value: null })}
-                  className="font-extrabold uppercase hover:underline ml-2 text-[10px] shrink-0"
-                >
-                  Reset Map [x]
-                </button>
-              </div>
-            )}
-          </div>
         )}
 
         {/* Collaboration Invitation slide drawer panel */}

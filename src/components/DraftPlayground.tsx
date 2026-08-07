@@ -212,7 +212,7 @@ export default function DraftPlayground({ onClose, currentUser }: DraftPlaygroun
               Dynamic Auto-Save & Server Draft Engine
             </h2>
             <p className="text-[11px] text-indigo-150 font-medium">
-              A production-grade, multi-form system synchronizing local updates with PostgreSQL, with conflict resolution.
+              A production-grade, multi-form system synchronizing local updates with Firebase Firestore, with conflict resolution.
             </p>
           </div>
           <button 
@@ -238,27 +238,8 @@ export default function DraftPlayground({ onClose, currentUser }: DraftPlaygroun
               💾 Storage Layers:
               <span className="bg-slate-200 dark:bg-slate-800 px-2 py-0.5 rounded-md text-[10px] font-mono">localStorage</span>
               <span className="text-slate-400">+</span>
-              <span className="bg-slate-200 dark:bg-slate-800 px-2 py-0.5 rounded-md text-[10px] font-mono">Cloud SQL (PostgreSQL)</span>
+              <span className="bg-slate-200 dark:bg-slate-800 px-2 py-0.5 rounded-md text-[10px] font-mono">Firebase Firestore</span>
             </span>
-          </div>
-
-          {/* Network Simulator toggle */}
-          <div className="flex items-center gap-2 shrink-0">
-            <span className="text-slate-500 font-medium">Network Link Status:</span>
-            <button
-              onClick={() => setNetworkSimulation(!networkSimulation)}
-              className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-extrabold uppercase transition cursor-pointer ${networkSimulation ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400' : 'bg-rose-100 hover:bg-rose-200 text-rose-800 dark:bg-rose-950/40 dark:text-rose-400'}`}
-            >
-              {networkSimulation ? (
-                <>
-                  <Wifi className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 animate-pulse" /> Online (Auto Sync Live)
-                </>
-              ) : (
-                <>
-                  <WifiOff className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" /> Offline (Local-Only Drafts)
-                </>
-              )}
-            </button>
           </div>
         </div>
 
@@ -595,7 +576,7 @@ export default function DraftPlayground({ onClose, currentUser }: DraftPlaygroun
                   </div>
 
                   <div className="flex justify-between items-center bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-200/60 dark:border-slate-800">
-                    <span className="text-slate-500 font-medium">PostgreSQL Server Draft:</span>
+                    <span className="text-slate-500 font-medium">Firebase Server Draft:</span>
                     {!currentUser ? (
                       <span className="text-slate-400 font-medium">Auth required</span>
                     ) : activeDraft.hasDraft ? (
@@ -613,7 +594,7 @@ export default function DraftPlayground({ onClose, currentUser }: DraftPlaygroun
                     <HelpCircle className="w-3.5 h-3.5" /> How Auto-Save Works:
                   </p>
                   <p>1. <strong>Instantly saves locally</strong> to <code>localStorage</code> (keyed by <code>draft:{"{"}uid{"}"}:{activeTab}</code>) 400ms after you stop typing.</p>
-                  <p>2. <strong>Uploads debounced JSON</strong> to Cloud SQL PostgreSQL via safe REST API 1.5 seconds after you stop typing if logged in.</p>
+                  <p>2. <strong>Uploads debounced JSON</strong> to Firebase Cloud Firestore 1.5 seconds after you stop typing if logged in.</p>
                   <p>3. <strong>Restores on load</strong>: Timestamps of local and server are compared. Conflict resolver pops up if a conflict is found!</p>
                 </div>
               </div>
@@ -632,7 +613,7 @@ export default function DraftPlayground({ onClose, currentUser }: DraftPlaygroun
                     Simulate Remote Device Change
                   </button>
                   <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed">
-                    Inserts a <strong>newer</strong> server-side draft version into Cloud SQL, representing a change from another iPad/phone. This triggers the side-by-side conflict dialog immediately upon synchronization.
+                    Inserts a <strong>newer</strong> server-side draft version into Firebase Cloud Firestore, representing a change from another iPad/phone. This triggers the side-by-side conflict dialog immediately upon synchronization.
                   </p>
                 </div>
               </div>

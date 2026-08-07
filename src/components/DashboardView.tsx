@@ -1410,7 +1410,7 @@ export default function DashboardView({
             <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500">
               Lifecycle Status:
             </span>
-            {currentUserObj && (currentUserObj.role === 'admin' || currentUserObj.role === 'master_admin' || currentUserObj.role === 'directorate_admin' || currentUserObj.role === 'pmo_admin') ? (
+            {currentUserObj && (currentUserObj.role === 'admin' || currentUserObj.role === 'master_admin' || currentUserObj.role === 'cpm_admin' || currentUserObj.role === 'directorate_admin' || currentUserObj.role === 'pmo_admin') ? (
               <select
                 value={project.status || 'In Progress'}
                 onChange={(e) => {
@@ -1435,7 +1435,7 @@ export default function DashboardView({
           </div>
 
           {/* Delete project option for Directorate Admins / Admins */}
-          {currentUserObj && (currentUserObj.role === 'admin' || currentUserObj.role === 'master_admin' || currentUserObj.role === 'directorate_admin' || currentUserObj.role === 'pmo_admin') && onDeleteProject && (
+          {currentUserObj && (currentUserObj.role === 'admin' || currentUserObj.role === 'master_admin' || currentUserObj.role === 'cpm_admin' || currentUserObj.role === 'directorate_admin' || currentUserObj.role === 'pmo_admin') && onDeleteProject && (
             <button
               onClick={() => {
                 if (window.confirm(`🛑 DELETE PROJECT CONFIRMATION\n\nAre you sure you want to permanently delete project "${project.name}" (ID: ${project.id}) from the system?\n\nThis action cannot be undone.`)) {

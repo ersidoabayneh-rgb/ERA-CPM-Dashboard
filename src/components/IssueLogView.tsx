@@ -3,18 +3,19 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   FileText, Plus, ArrowRight, Clock, AlertTriangle, CheckCircle, Trash2,
   UserCheck, History, Printer, Search, Filter, RefreshCw, Layers, ShieldAlert, Edit2, ChevronRight, Download, FileSpreadsheet, FileCheck,
-  TrendingUp, AlertOctagon, SlidersHorizontal, X, Calendar, Zap, CheckCircle2, BarChart3
+  TrendingUp, AlertOctagon, SlidersHorizontal, X, Calendar, Zap, CheckCircle2, BarChart3, BookOpen, Sparkles, User as UserIcon, MessageSquare, PenTool
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { 
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, CartesianGrid, AreaChart, Area 
 } from 'recharts';
-import { Project, IssueLogItem, IssueTransferRecord, formatAccounting } from '../types';
+import { Project, IssueLogItem, IssueTransferRecord, IssueHistoryRecord, User, formatAccounting } from '../types';
 
 interface IssueLogViewProps {
   project: Project;
   onProjectUpdate?: (updates: Partial<Project>, logMessage?: string) => void;
   isAdmin?: boolean;
+  currentUserObj?: User | null;
 }
 
 const defaultSampleIssues: IssueLogItem[] = [
@@ -35,6 +36,41 @@ const defaultSampleIssues: IssueLogItem[] = [
     currentStage: 'Stage 3: Directorate & Regional Authority Handover',
     latestProgressSummary: 'Consultant RE completed delay impact analysis confirming 48 critical path days lost. Issue was transferred from Resident Engineer team to ERA Central ROW Directorate and Local Woreda Administration for compensation disbursement.',
     currentBottleneck: 'Awaiting local Woreda compensation committee bank clearance and Ethio Telecom pole relocation schedule.',
+    lessonsLearned: 'Right-of-Way valuation and utility relocation clearance with local Woreda administration must be finalized prior to issuing Site Access under FIDIC Clause 2.1. Establishing a joint ERA-Woreda taskforce reduced valuation dispute cycle time by 60%.',
+    lessonsLearnedUpdatedBy: 'Eng. Solomon Tadesse (Senior RE)',
+    lessonsLearnedUpdatedAt: '2026-02-20 14:30',
+    history: [
+      {
+        id: 'hist-1',
+        timestamp: '2025-11-14 09:30',
+        user: 'Contractor (CCCC)',
+        previousStatus: 'None',
+        newStatus: 'Submitted / Under Review',
+        stage: 'Stage 1: Initial Submission & Site Verification',
+        changeType: 'Creation',
+        notes: 'Initial ROW obstruction claim logged for Ch 24+500 - Ch 31+200.'
+      },
+      {
+        id: 'hist-2',
+        timestamp: '2025-12-02 14:15',
+        user: 'Eng. Solomon Tadesse (Senior RE)',
+        previousStatus: 'Submitted / Under Review',
+        newStatus: 'Transferred / Escalated',
+        stage: 'Stage 3: Directorate & Regional Authority Handover',
+        changeType: 'Transfer Handover',
+        notes: 'Transferred to ERA Regional Directorate due to compensation amount exceeding site-level threshold.'
+      },
+      {
+        id: 'hist-3',
+        timestamp: '2026-02-18 11:45',
+        user: 'Ato Kassahun Worku (Directorate Director)',
+        previousStatus: 'Transferred / Escalated',
+        newStatus: 'Transferred / Escalated',
+        stage: 'Stage 3: ERA Contractual Claims & Steering Committee',
+        changeType: 'Transfer Handover',
+        notes: 'Notice of intention to claim evaluated. Interim EOT recommendation submitted to Steering Committee.'
+      }
+    ],
     transfers: [
       {
         id: 'tr-1',
@@ -75,6 +111,31 @@ const defaultSampleIssues: IssueLogItem[] = [
     currentStage: 'Stage 2: Ministry of Finance & National Bank Review',
     latestProgressSummary: 'ERA Finance Directorate reviewed certification against IPC foreign currency ratio. Recommendation sent to National Bank of Ethiopia (NBE) for prioritized Forex release.',
     currentBottleneck: 'National Bank FX queue priority listing.',
+    lessonsLearned: 'Centralizing foreign exchange allocation requests with National Bank under specialized infrastructure import quotas prevents asphalt supply chain stoppages during peak dry construction season.',
+    lessonsLearnedUpdatedBy: 'W/ro Bethlehem Girma (Senior Finance Officer)',
+    lessonsLearnedUpdatedAt: '2026-01-30 10:20',
+    history: [
+      {
+        id: 'hist-201',
+        timestamp: '2026-01-10 10:15',
+        user: 'Contractor (Sur Construction PLC)',
+        previousStatus: 'None',
+        newStatus: 'Submitted / Under Review',
+        stage: 'Stage 1: Initial Submission',
+        changeType: 'Creation',
+        notes: 'Forex allocation application submitted for 3,200 MT Bitumen.'
+      },
+      {
+        id: 'hist-202',
+        timestamp: '2026-01-28 16:20',
+        user: 'W/ro Bethlehem Girma (Senior Finance Officer)',
+        previousStatus: 'Submitted / Under Review',
+        newStatus: 'In Progress / Evaluation',
+        stage: 'Stage 2: Ministry of Finance & National Bank Review',
+        changeType: 'Status Change',
+        notes: 'Audited past bitumen utilization; verified LC documentation and forwarded to National Bank.'
+      }
+    ],
     transfers: [
       {
         id: 'tr-1',
@@ -105,6 +166,18 @@ const defaultSampleIssues: IssueLogItem[] = [
     currentStage: 'Stage 1: Initial Submission & Geotechnical Soil Investigation Review',
     latestProgressSummary: 'Design review panel requested supplemental bored pile load tests and updated structural calculations from lead consultant.',
     currentBottleneck: 'Pending approval of revised bored pile foundation design drawing package from ERA Design Review Directorate.',
+    history: [
+      {
+        id: 'hist-301',
+        timestamp: '2025-10-18 11:00',
+        user: 'Consultant Resident Engineer',
+        previousStatus: 'None',
+        newStatus: 'Submitted / Under Review',
+        stage: 'Stage 1: Initial Submission',
+        changeType: 'Creation',
+        notes: 'Unforeseeable soft soil condition report submitted.'
+      }
+    ],
     transfers: []
   },
   {
@@ -124,6 +197,31 @@ const defaultSampleIssues: IssueLogItem[] = [
     currentStage: 'Stage 4: Approval Issued & Quarry Operation Cleared',
     latestProgressSummary: 'Central Lab released certified test certificate confirming LA Abrasion value of 26.4% (under 30% limit). Resident Engineer issued formal quarry clearance.',
     currentBottleneck: 'Resolved - No active bottleneck.',
+    lessonsLearned: 'Establishing accredited mobile site testing facilities or expedited central lab service level agreements prevents quarry testing bottlenecks that impact subbase production schedules.',
+    lessonsLearnedUpdatedBy: 'Ato Abebe Tessema (Materials Engineer)',
+    lessonsLearnedUpdatedAt: '2025-12-28 11:00',
+    history: [
+      {
+        id: 'hist-401',
+        timestamp: '2025-12-05 08:45',
+        user: 'Contractor (Sunshine Construction PLC)',
+        previousStatus: 'None',
+        newStatus: 'Submitted / Under Review',
+        stage: 'Stage 1: Sample Collection',
+        changeType: 'Creation',
+        notes: 'Aggregate samples dispatched to ERA Central Laboratory.'
+      },
+      {
+        id: 'hist-402',
+        timestamp: '2025-12-26 15:10',
+        user: 'Central ERA Laboratory',
+        previousStatus: 'Submitted / Under Review',
+        newStatus: 'Resolved / Approved',
+        stage: 'Stage 4: Approval Issued & Quarry Operation Cleared',
+        changeType: 'Status Change',
+        notes: 'LA Abrasion certified at 26.4%. Quarry #3 officially cleared for subbase processing.'
+      }
+    ],
     transfers: []
   },
   {
@@ -143,6 +241,18 @@ const defaultSampleIssues: IssueLogItem[] = [
     currentStage: 'Stage 1: Initial Payment Audit & Treasury Release',
     latestProgressSummary: 'Audit verified certificate calculations. Treasury transfer queue currently processing budget disbursement batch.',
     currentBottleneck: 'Awaiting Ministry of Finance quarterly budget release transfer to ERA project account.',
+    history: [
+      {
+        id: 'hist-501',
+        timestamp: '2026-02-01 14:00',
+        user: 'Contractor',
+        previousStatus: 'None',
+        newStatus: 'Submitted / Under Review',
+        stage: 'Stage 1: Payment Audit',
+        changeType: 'Creation',
+        notes: 'Payment delay notification submitted under FIDIC 14.7.'
+      }
+    ],
     transfers: []
   },
   {
@@ -162,6 +272,18 @@ const defaultSampleIssues: IssueLogItem[] = [
     currentStage: 'Stage 2: Corrective Action Implementation',
     latestProgressSummary: 'Contractor deployed two additional 15,000L water bowsers and scheduled twice-daily dust suppression sprays along town corridor.',
     currentBottleneck: 'Monitoring dust levels to verify full compliance ahead of Woreda inspection.',
+    history: [
+      {
+        id: 'hist-601',
+        timestamp: '2026-03-12 16:30',
+        user: 'Consultant Environmental Specialist',
+        previousStatus: 'None',
+        newStatus: 'In Progress / Evaluation',
+        stage: 'Stage 2: Corrective Action Implementation',
+        changeType: 'Creation',
+        notes: 'Dust suppression non-compliance notice logged.'
+      }
+    ],
     transfers: []
   }
 ];
@@ -262,12 +384,14 @@ export function getDepartmentTimeRecords(item: IssueLogItem): DeptTimeRecord[] {
   return records;
 }
 
-export default function IssueLogView({ project, onProjectUpdate, isAdmin }: IssueLogViewProps) {
+export default function IssueLogView({ project, onProjectUpdate, isAdmin, currentUserObj }: IssueLogViewProps) {
   const issuesList = (project.issues && project.issues.length > 0) ? project.issues : defaultSampleIssues;
+
+  const currentUsername = currentUserObj?.username || 'ErsidoAbayneh@gmail.com';
 
   const [selectedIssueId, setSelectedIssueId] = useState<string>(issuesList[0]?.id || '');
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('All');
+  const [statusFilter, setStatusFilter] = useState('Active');
   const [priorityFilter, setPriorityFilter] = useState('All');
   const [categoryFilter, setCategoryFilter] = useState('All');
   const [pendingDaysThreshold, setPendingDaysThreshold] = useState<number>(14);
@@ -276,8 +400,29 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin }: Issu
   
   // Modals state
   const [showNewIssueModal, setShowNewIssueModal] = useState(false);
+  const [urgentNotificationFlag, setUrgentNotificationFlag] = useState<{ issueCode: string; title: string; priority: string } | null>(null);
   const [showAddTransferModal, setShowAddTransferModal] = useState(false);
   const [showEditIssueModal, setShowEditIssueModal] = useState(false);
+  const [showArchiveModal, setShowArchiveModal] = useState(false);
+  const [archiveSearchQuery, setArchiveSearchQuery] = useState('');
+
+  // Lessons Learned & History Note Modals State
+  const [showLessonsModal, setShowLessonsModal] = useState(false);
+  const [lessonsInput, setLessonsInput] = useState('');
+  const [reviewNotesInput, setReviewNotesInput] = useState('');
+
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [historyNoteInput, setHistoryNoteInput] = useState('');
+  const [historyNewStatusInput, setHistoryNewStatusInput] = useState<string>('');
+
+  const selectedIssue = issuesList.find(i => i.id === selectedIssueId) || issuesList[0];
+
+  React.useEffect(() => {
+    if (selectedIssue) {
+      setLessonsInput(selectedIssue.lessonsLearned || '');
+      setReviewNotesInput(selectedIssue.reviewNotes || '');
+    }
+  }, [selectedIssueId, selectedIssue?.lessonsLearned, selectedIssue?.reviewNotes]);
 
   // Pending days and threshold calculation helpers
   const calculateDaysPending = (submittedDate: string) => {
@@ -383,8 +528,6 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin }: Issu
     transferredBy: ''
   });
 
-  const selectedIssue = issuesList.find(i => i.id === selectedIssueId) || issuesList[0];
-
   // Helper to persist updates to project
   const saveIssues = (updatedList: IssueLogItem[], msg: string) => {
     if (onProjectUpdate) {
@@ -402,6 +545,10 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin }: Issu
     e.preventDefault();
     if (!newIssue.title) return;
 
+    const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
+    const initialStatus = newIssue.currentStatus || 'Submitted / Under Review';
+    const initialStage = newIssue.currentStage || 'Stage 1: Initial Review';
+
     const created: IssueLogItem = {
       id: `iss-${Date.now()}`,
       issueCode: newIssue.issueCode || `ERA-ISS-2026-${String(issuesList.length + 1).padStart(3, '0')}`,
@@ -415,10 +562,22 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin }: Issu
       financialImpactEtb: Number(newIssue.financialImpactEtb) || 0,
       timeImpactDays: Number(newIssue.timeImpactDays) || 0,
       priority: newIssue.priority || 'High',
-      currentStatus: newIssue.currentStatus || 'Submitted / Under Review',
-      currentStage: newIssue.currentStage || 'Stage 1: Initial Review',
+      currentStatus: initialStatus,
+      currentStage: initialStage,
       latestProgressSummary: newIssue.latestProgressSummary || 'Submitted.',
       currentBottleneck: newIssue.currentBottleneck || '',
+      history: [
+        {
+          id: `hist-${Date.now()}`,
+          timestamp: nowStr,
+          user: currentUsername,
+          previousStatus: 'None',
+          newStatus: initialStatus,
+          stage: initialStage,
+          changeType: 'Creation',
+          notes: 'Initial issue entry registered in ERA system.'
+        }
+      ],
       transfers: []
     };
 
@@ -426,11 +585,32 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin }: Issu
     saveIssues(updated, `New Issue Log entry created: ${created.issueCode}`);
     setSelectedIssueId(created.id);
     setShowNewIssueModal(false);
+
+    // Trigger Admin Notification Flag for High or Critical priority issues
+    if (created.priority === 'High' || created.priority === 'Critical') {
+      setUrgentNotificationFlag({
+        issueCode: created.issueCode,
+        title: created.title,
+        priority: created.priority
+      });
+
+      alert(`🚨 URGENT ADMIN NOTIFICATION TRIGGERED!\n\n` +
+            `Attention Administrators:\n` +
+            `A high-severity issue has been registered with priority '${created.priority}'.\n\n` +
+            `• Issue Code: ${created.issueCode}\n` +
+            `• Title: ${created.title}\n` +
+            `• Priority: ${created.priority.toUpperCase()}\n` +
+            `• Date Submitted: ${created.submittedDate}\n\n` +
+            `An urgent notification flag has been dispatched in the system registry to alert project administrators immediately.`);
+    }
   };
 
   const handleAddTransfer = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedIssue || !newTransfer.transferredTo) return;
+
+    const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
+    const transferUser = newTransfer.transferredBy || currentUsername;
 
     const transferItem: IssueTransferRecord = {
       id: `tr-${Date.now()}`,
@@ -440,7 +620,18 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin }: Issu
       transferReason: newTransfer.transferReason || 'Escalated for higher approval authority',
       actionTakenByPreviousTeam: newTransfer.actionTakenByPreviousTeam || 'Reviewed preliminary claim and verified factual documentation.',
       recommendedCourseOfAction: newTransfer.recommendedCourseOfAction || 'Next course of action as recommended.',
-      transferredBy: newTransfer.transferredBy || 'Responsible Officer'
+      transferredBy: transferUser
+    };
+
+    const historyRecord: IssueHistoryRecord = {
+      id: `hist-${Date.now()}`,
+      timestamp: nowStr,
+      user: transferUser,
+      previousStatus: selectedIssue.currentStatus,
+      newStatus: 'Transferred / Escalated',
+      stage: `Transferred to: ${newTransfer.transferredTo}`,
+      changeType: 'Transfer Handover',
+      notes: `Transferred from [${newTransfer.transferredFrom || 'Previous Team'}] to [${newTransfer.transferredTo}]. Reason: ${newTransfer.transferReason || 'Escalated'}. Recommended Action: ${newTransfer.recommendedCourseOfAction || 'See transfer notes'}`
     };
 
     const updatedIssue: IssueLogItem = {
@@ -448,6 +639,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin }: Issu
       currentStatus: 'Transferred / Escalated',
       currentStage: `Transferred to: ${newTransfer.transferredTo}`,
       latestProgressSummary: `Issue transferred from [${transferItem.transferredFrom}] to [${transferItem.transferredTo}]. Recommended Course: ${transferItem.recommendedCourseOfAction}`,
+      history: [historyRecord, ...(selectedIssue.history || [])],
       transfers: [...selectedIssue.transfers, transferItem]
     };
 
@@ -471,9 +663,86 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin }: Issu
     e.preventDefault();
     if (!selectedIssue) return;
 
-    const updatedList = issuesList.map(item => item.id === selectedIssue.id ? selectedIssue : item);
+    const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
+    const historyRecord: IssueHistoryRecord = {
+      id: `hist-${Date.now()}`,
+      timestamp: nowStr,
+      user: currentUsername,
+      previousStatus: selectedIssue.currentStatus,
+      newStatus: selectedIssue.currentStatus,
+      stage: selectedIssue.currentStage,
+      changeType: 'Details Edit',
+      notes: `Issue details updated. Summary: ${selectedIssue.latestProgressSummary || 'Details revised'}`
+    };
+
+    const updatedIssueWithHistory: IssueLogItem = {
+      ...selectedIssue,
+      history: [historyRecord, ...(selectedIssue.history || [])]
+    };
+
+    const updatedList = issuesList.map(item => item.id === selectedIssue.id ? updatedIssueWithHistory : item);
     saveIssues(updatedList, `Issue ${selectedIssue.issueCode} details updated`);
     setShowEditIssueModal(false);
+  };
+
+  const handleSaveLessonsLearned = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedIssue) return;
+    const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
+
+    const historyRecord: IssueHistoryRecord = {
+      id: `hist-${Date.now()}`,
+      timestamp: nowStr,
+      user: currentUsername,
+      previousStatus: selectedIssue.currentStatus,
+      newStatus: selectedIssue.currentStatus,
+      stage: selectedIssue.currentStage,
+      changeType: 'Lessons Learned Review',
+      notes: `Lessons learned review recorded by ${currentUsername}.`
+    };
+
+    const updatedIssue: IssueLogItem = {
+      ...selectedIssue,
+      lessonsLearned: lessonsInput,
+      reviewNotes: reviewNotesInput,
+      lessonsLearnedUpdatedBy: currentUsername,
+      lessonsLearnedUpdatedAt: nowStr,
+      history: [historyRecord, ...(selectedIssue.history || [])]
+    };
+
+    const updatedList = issuesList.map(item => item.id === selectedIssue.id ? updatedIssue : item);
+    saveIssues(updatedList, `Lessons learned updated for issue ${selectedIssue.issueCode}`);
+    setShowLessonsModal(false);
+  };
+
+  const handleAddManualHistoryNote = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedIssue || !historyNoteInput) return;
+    const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
+    const targetStatus = (historyNewStatusInput || selectedIssue.currentStatus) as IssueLogItem['currentStatus'];
+
+    const historyRecord: IssueHistoryRecord = {
+      id: `hist-${Date.now()}`,
+      timestamp: nowStr,
+      user: currentUsername,
+      previousStatus: selectedIssue.currentStatus,
+      newStatus: targetStatus,
+      stage: selectedIssue.currentStage,
+      changeType: targetStatus !== selectedIssue.currentStatus ? 'Status Change' : 'Audit Note',
+      notes: historyNoteInput
+    };
+
+    const updatedIssue: IssueLogItem = {
+      ...selectedIssue,
+      currentStatus: targetStatus,
+      history: [historyRecord, ...(selectedIssue.history || [])]
+    };
+
+    const updatedList = issuesList.map(item => item.id === selectedIssue.id ? updatedIssue : item);
+    saveIssues(updatedList, `Status change / audit note logged by ${currentUsername}`);
+    setShowHistoryModal(false);
+    setHistoryNoteInput('');
+    setHistoryNewStatusInput('');
   };
 
   // Structured PDF Export for Single Issue Dossier
@@ -766,41 +1035,100 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin }: Issu
       curY += 36;
     }
 
-    // 5. Official Endorsements
-    drawSectionHeader("5. Formal Contractual Endorsement & Verification");
-    checkSpace(70);
+    // 5. Lessons Learned & Retrospective Review
+    drawSectionHeader("5. Lessons Learned & Retrospective Review", [13, 148, 136]);
+    const lessonsText = item.lessonsLearned || "No explicit lesson learned or retrospective review logged for this issue entry yet.";
+    const lessonsLines = doc.splitTextToSize(lessonsText, contentWidth - 24);
+    const lessonsBoxHeight = Math.max(36, (lessonsLines.length * 9) + 22);
 
-    const sigWidth = (contentWidth - 20) / 3;
-    const sigTitles = [
-      "Resident Engineer (Consultant)",
-      "Regional / Directorate Director",
-      "PMO & Claims Committee"
-    ];
+    checkSpace(lessonsBoxHeight + 10);
+    doc.setFillColor(240, 253, 250);
+    doc.setDrawColor(153, 246, 228);
+    doc.roundedRect(margin, curY, contentWidth, lessonsBoxHeight, 4, 4, 'DF');
 
-    sigTitles.forEach((stitle, sIdx) => {
-      const sx = margin + sIdx * (sigWidth + 10);
-      doc.setFillColor(255, 255, 255);
-      doc.setDrawColor(203, 213, 225);
-      doc.roundedRect(sx, curY, sigWidth, 58, 4, 4, 'DF');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(15, 118, 110);
+    const lessonAuthorText = item.lessonsLearnedUpdatedBy ? `   (Recorded by: ${item.lessonsLearnedUpdatedBy} on ${item.lessonsLearnedUpdatedAt || ''})` : '';
+    doc.text(`KEY LESSON & STRATEGIC RECOMMENDATION${lessonAuthorText}`, margin + 10, curY + 13);
 
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7);
-      doc.setTextColor(30, 41, 59);
-      doc.text(stitle, sx + 8, curY + 12);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(30, 41, 59);
+    doc.text(lessonsLines, margin + 10, curY + 24);
 
+    curY += lessonsBoxHeight + 12;
+
+    // 6. Complete Status History & User Audit Log
+    drawSectionHeader("6. Status History & User Audit Log Trail", [37, 99, 235]);
+    if (item.history && item.history.length > 0) {
+      item.history.forEach((hist, hIdx) => {
+        const histNotes = doc.splitTextToSize(`Notes: ${hist.notes}`, contentWidth - 24);
+        const histBoxHeight = Math.max(28, (histNotes.length * 8) + 20);
+
+        checkSpace(histBoxHeight + 6);
+        doc.setFillColor(248, 250, 252);
+        doc.setDrawColor(226, 232, 240);
+        doc.roundedRect(margin, curY, contentWidth, histBoxHeight, 3, 3, 'DF');
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7);
+        doc.setTextColor(30, 41, 59);
+        doc.text(`[${hist.timestamp}]  ${hist.user}  •  Type: ${hist.changeType}  •  Status: ${hist.previousStatus} ---> ${hist.newStatus}`, margin + 8, curY + 11);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7);
+        doc.setTextColor(71, 85, 105);
+        doc.text(histNotes, margin + 8, curY + 20);
+
+        curY += histBoxHeight + 6;
+      });
+    } else {
+      checkSpace(24);
+      doc.setFillColor(248, 250, 252);
       doc.setDrawColor(226, 232, 240);
-      doc.line(sx + 8, curY + 40, sx + sigWidth - 8, curY + 40);
-
+      doc.roundedRect(margin, curY, contentWidth, 20, 3, 3, 'DF');
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(6);
-      doc.setTextColor(148, 163, 184);
-      doc.text("Signature & Official Stamp", sx + 8, curY + 50);
-    });
+      doc.setFontSize(7.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text("Initial submission audit history record auto-logged.", margin + 8, curY + 13);
+      curY += 26;
+    }
 
-    curY += 70;
+    curY += 8;
 
     const filename = `${item.issueCode.replace(/[^a-zA-Z0-9-]/g, '_')}_Dossier_Report.pdf`;
     doc.save(filename);
+  };
+
+  // Export Issue Log Registry to CSV / Excel
+  const handleExportCsv = () => {
+    if (!issuesList.length) return;
+    const headers = ["Issue Code", "Category", "Title", "Date Submitted", "Submitted By", "Submitted To", "Priority", "Status", "Contract Ref", "Financial Exposure (ETB)", "Time Exposure (Days)", "Lessons Learned"];
+    const rows = issuesList.map(item => [
+      `"${item.issueCode || ''}"`,
+      `"${(item.category || '').replace(/"/g, '""')}"`,
+      `"${(item.title || '').replace(/"/g, '""')}"`,
+      `"${item.submittedDate || ''}"`,
+      `"${(item.submittedBy || '').replace(/"/g, '""')}"`,
+      `"${(item.submittedTo || '').replace(/"/g, '""')}"`,
+      `"${item.priority || ''}"`,
+      `"${item.currentStatus || ''}"`,
+      `"${(item.clauseReference || '').replace(/"/g, '""')}"`,
+      `"${item.financialImpactEtb || 0}"`,
+      `"${item.timeImpactDays || 0}"`,
+      `"${(item.lessonsLearned || '').replace(/"/g, '""')}"`
+    ]);
+
+    const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `ERA_Issue_Log_Registry_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   // Structured PDF Export for Master Issue Registry Report
@@ -1099,15 +1427,25 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin }: Issu
 
   const categoriesList = Array.from(new Set(issuesList.map(i => i.category))).filter(Boolean);
 
+  const isResolvedStatus = (status: string) => {
+    const s = (status || '').toLowerCase();
+    return s.includes('resolved') || s.includes('approved') || s.includes('closed') || s.includes('rejected');
+  };
+
   const filteredIssues = issuesList.filter(item => {
     const matchesSearch = (item.title || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
                           (item.issueCode || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          (item.category || '').toLowerCase().includes(searchQuery.toLowerCase());
+                          (item.category || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          (item.lessonsLearned || '').toLowerCase().includes(searchQuery.toLowerCase());
     
     let matchesStatus = true;
-    if (statusFilter === 'Overdue Pending') {
+    if (statusFilter === 'Active') {
+      matchesStatus = !isResolvedStatus(item.currentStatus);
+    } else if (statusFilter === 'Overdue Pending') {
       matchesStatus = isOverduePending(item, pendingDaysThreshold);
-    } else if (statusFilter !== 'All') {
+    } else if (statusFilter === 'Resolved / Approved' || statusFilter === 'Resolved Archive') {
+      matchesStatus = isResolvedStatus(item.currentStatus);
+    } else if (statusFilter !== 'All' && statusFilter !== 'All Records') {
       matchesStatus = item.currentStatus === statusFilter;
     }
 
@@ -1117,6 +1455,8 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin }: Issu
     return matchesSearch && matchesStatus && matchesPriority && matchesCategory;
   });
 
+  const activeIssuesCount = issuesList.filter(item => !isResolvedStatus(item.currentStatus)).length;
+  const resolvedIssuesList = issuesList.filter(item => isResolvedStatus(item.currentStatus) || Boolean(item.lessonsLearned && item.lessonsLearned.trim().length > 0));
   const overduePendingCount = issuesList.filter(item => isOverduePending(item, pendingDaysThreshold)).length;
 
   const getPriorityBadgeClass = (p: string) => {
@@ -1194,6 +1534,39 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin }: Issu
         </div>
       )}
 
+      {/* High / Critical Priority Admin Notification Flag Banner */}
+      {urgentNotificationFlag && (
+        <div className="bg-gradient-to-r from-red-600 via-rose-600 to-amber-600 text-white p-3.5 rounded-2xl shadow-md flex items-center justify-between gap-3 no-print border border-red-400/40 animate-pulse">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-white text-rose-600 rounded-xl font-bold shrink-0">
+              <AlertTriangle className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-2xs font-black uppercase tracking-wider bg-white/20 text-white px-2 py-0.5 rounded border border-white/30">
+                  🚨 URGENT ADMIN NOTIFICATION FLAG ACTIVE
+                </span>
+                <span className="text-2xs font-mono font-bold text-rose-100">
+                  [{urgentNotificationFlag.priority.toUpperCase()} PRIORITY]
+                </span>
+              </div>
+              <p className="text-xs font-extrabold mt-0.5 text-white">
+                New Issue Registered: {urgentNotificationFlag.issueCode} — "{urgentNotificationFlag.title}"
+              </p>
+              <p className="text-2xs text-rose-100">
+                Project administrators have been alerted for immediate prompt escalation and evaluation.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setUrgentNotificationFlag(null)}
+            className="bg-white/20 hover:bg-white/30 text-white text-2xs font-bold px-2.5 py-1 rounded-lg transition cursor-pointer border border-white/30 shrink-0"
+          >
+            Dismiss Flag
+          </button>
+        </div>
+      )}
+
       {/* Header Banner */}
       <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-5 rounded-2xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -1210,6 +1583,12 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin }: Issu
 
         <div className="flex flex-wrap items-center gap-2">
           <button
+            onClick={() => setShowArchiveModal(true)}
+            className="flex items-center gap-1.5 bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold px-3 py-2 rounded-xl transition shadow-xs cursor-pointer"
+          >
+            <BookOpen className="w-4 h-4" /> Lessons Learned & Resolved Archive ({resolvedIssuesList.length})
+          </button>
+          <button
             onClick={() => setShowNewIssueModal(true)}
             className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-2 rounded-xl transition shadow-xs cursor-pointer"
           >
@@ -1221,13 +1600,13 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin }: Issu
       {/* Overview Stats Bar */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-3.5 rounded-xl shadow-sm">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Total Logged Issues</span>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Active Issues Log</span>
           <span className="text-xl font-extrabold text-slate-800 dark:text-white font-mono mt-0.5 block">
-            {issuesList.length}
+            {activeIssuesCount}
           </span>
         </div>
         <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-3.5 rounded-xl shadow-sm">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-amber-500 block">Active / Under Review</span>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-amber-500 block">Pending / Under Review</span>
           <span className="text-xl font-extrabold text-amber-600 dark:text-amber-400 font-mono mt-0.5 block">
             {issuesList.filter(i => isPendingStatus(i.currentStatus)).length}
           </span>
@@ -1239,9 +1618,9 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin }: Issu
           </span>
         </div>
         <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-3.5 rounded-xl shadow-sm">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-rose-500 block">Total Financial Exposure</span>
-          <span className="text-lg font-extrabold text-rose-600 dark:text-rose-400 font-mono mt-0.5 block">
-            {formatAccounting(issuesList.reduce((acc, curr) => acc + (curr.financialImpactEtb || 0), 0), 'Br.')}
+          <span className="text-[10px] font-bold uppercase tracking-wider text-teal-600 dark:text-teal-400 block">Resolved / Archived Records</span>
+          <span className="text-xl font-extrabold text-teal-600 dark:text-teal-400 font-mono mt-0.5 block">
+            {resolvedIssuesList.length}
           </span>
         </div>
       </div>
@@ -1255,11 +1634,18 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin }: Issu
               Structured Issue Log Table
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Comprehensive tabular registry of all project issues, submitted dates, current statuses, required actions, and team handovers.
+              Active project issues registry. Approved and resolved issues are archived for historical records & lessons learned.
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setShowArchiveModal(true)}
+              className="bg-teal-50 dark:bg-teal-950/60 hover:bg-teal-100 dark:hover:bg-teal-900/80 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800 text-xs font-bold py-2 px-3.5 rounded-xl transition shadow-xs flex items-center gap-1.5 cursor-pointer"
+            >
+              <BookOpen className="w-4 h-4 text-teal-600" />
+              Lessons Learned Repository ({resolvedIssuesList.length})
+            </button>
             <button
               onClick={() => setShowNewIssueModal(true)}
               className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-2 px-3.5 rounded-xl transition shadow-xs flex items-center gap-1.5 cursor-pointer"
@@ -1267,6 +1653,67 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin }: Issu
               <Plus className="w-4 h-4" />
               Add New Issue
             </button>
+          </div>
+        </div>
+
+        {/* Search & Filter Toolbar */}
+        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 bg-slate-50 dark:bg-slate-900/60 p-3 rounded-xl border border-slate-200/80 dark:border-slate-700/80 text-xs">
+          <div className="flex-1 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+            <div className="relative flex-1">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search issues by title, code, category, or lesson learned..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl pl-9 pr-3 py-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-500 text-slate-800 dark:text-slate-100"
+              />
+            </div>
+
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
+              {[
+                { label: 'Active Issues', value: 'Active', count: activeIssuesCount },
+                { label: 'Submitted', value: 'Submitted / Under Review' },
+                { label: 'In Progress', value: 'In Progress / Evaluation' },
+                { label: 'Transferred', value: 'Transferred / Escalated' },
+                { label: 'Overdue', value: 'Overdue Pending', count: overduePendingCount },
+                { label: 'Resolved Archive', value: 'Resolved / Approved', count: resolvedIssuesList.length },
+                { label: 'All Records', value: 'All' }
+              ].map((tab) => {
+                const isActive = statusFilter === tab.value;
+                const isOverdue = tab.value === 'Overdue Pending';
+                const isResolved = tab.value === 'Resolved / Approved';
+
+                return (
+                  <button
+                    key={tab.value}
+                    onClick={() => setStatusFilter(tab.value)}
+                    className={`px-2.5 py-1.5 rounded-lg text-2xs font-extrabold whitespace-nowrap transition flex items-center gap-1 cursor-pointer ${
+                      isActive
+                        ? isOverdue
+                          ? 'bg-rose-600 text-white shadow-2xs'
+                          : isResolved
+                            ? 'bg-teal-600 text-white shadow-2xs'
+                            : 'bg-blue-600 text-white shadow-2xs'
+                        : isOverdue
+                          ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
+                          : isResolved
+                            ? 'bg-teal-50 text-teal-700 dark:bg-teal-950/40 dark:text-teal-300 border border-teal-200 dark:border-teal-800'
+                            : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    {tab.label}
+                    {tab.count !== undefined && (
+                      <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-mono ${
+                        isActive ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                      }`}>
+                        {tab.count}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
 
@@ -1459,10 +1906,32 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin }: Issu
                           <button
                             onClick={() => {
                               setSelectedIssueId(item.id);
+                              setShowHistoryModal(true);
+                            }}
+                            className="p-1.5 rounded-lg bg-blue-50 dark:bg-blue-950/50 hover:bg-blue-100 dark:hover:bg-blue-900/80 text-blue-700 dark:text-blue-300 transition cursor-pointer border border-blue-200 dark:border-blue-800"
+                            title="Log Status Change & User History"
+                          >
+                            <History className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedIssueId(item.id);
+                              setLessonsInput(item.lessonsLearned || '');
+                              setReviewNotesInput(item.reviewNotes || '');
+                              setShowLessonsModal(true);
+                            }}
+                            className="p-1.5 rounded-lg bg-teal-50 dark:bg-teal-950/50 hover:bg-teal-100 dark:hover:bg-teal-900/80 text-teal-700 dark:text-teal-300 transition cursor-pointer border border-teal-200 dark:border-teal-800"
+                            title="Record / Review Lessons Learned"
+                          >
+                            <BookOpen className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedIssueId(item.id);
                               setShowEditIssueModal(true);
                             }}
                             className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 hover:bg-blue-100 dark:hover:bg-blue-900/50 text-slate-700 dark:text-slate-200 hover:text-blue-600 dark:hover:text-blue-300 transition cursor-pointer"
-                            title="Update Status / Action"
+                            title="Update Details"
                           >
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
@@ -1493,6 +1962,26 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin }: Issu
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Action Toolbar Below Table (Export Only) */}
+        <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100 dark:border-slate-700/60">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleExportCsv}
+              className="bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 text-xs font-bold px-3.5 py-2 rounded-xl transition flex items-center gap-1.5 cursor-pointer border border-slate-200 dark:border-slate-600"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+              Export CSV / Excel
+            </button>
+            <button
+              onClick={() => selectedIssue && handleExportSingleIssuePdf(selectedIssue)}
+              className="bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 text-xs font-bold px-3.5 py-2 rounded-xl transition flex items-center gap-1.5 cursor-pointer border border-slate-200 dark:border-slate-600"
+            >
+              <Download className="w-4 h-4 text-rose-600" />
+              Export PDF Dossier
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1720,7 +2209,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin }: Issu
               )}
 
               {/* Official Sheet Header */}
-              <div className="border-b-2 border-slate-900 dark:border-slate-100 pb-4">
+              <div className="border-b-2 border-slate-900 dark:border-slate-100 pb-4 space-y-3">
                 <div className="flex justify-between items-start gap-4">
                   <div>
                     <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 block">
@@ -1748,6 +2237,57 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin }: Issu
                         {selectedIssue.currentStatus}
                       </span>
                     </div>
+                  </div>
+                </div>
+
+                {/* Quick Single-Button Action Toolbar */}
+                <div className="no-print pt-2 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 dark:border-slate-700/80">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={() => {
+                        setHistoryNewStatusInput(selectedIssue.currentStatus);
+                        setShowHistoryModal(true);
+                      }}
+                      className="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-2xs font-bold px-3 py-1.5 rounded-xl transition shadow-xs cursor-pointer"
+                    >
+                      <History className="w-3.5 h-3.5" />
+                      Log Status Change / Note
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setLessonsInput(selectedIssue.lessonsLearned || '');
+                        setReviewNotesInput(selectedIssue.reviewNotes || '');
+                        setShowLessonsModal(true);
+                      }}
+                      className="inline-flex items-center gap-1.5 bg-teal-600 hover:bg-teal-700 text-white text-2xs font-bold px-3 py-1.5 rounded-xl transition shadow-xs cursor-pointer"
+                    >
+                      <BookOpen className="w-3.5 h-3.5" />
+                      Record Lessons Learned
+                    </button>
+
+                    <button
+                      onClick={() => setShowAddTransferModal(true)}
+                      className="inline-flex items-center gap-1.5 bg-purple-600 hover:bg-purple-700 text-white text-2xs font-bold px-3 py-1.5 rounded-xl transition shadow-xs cursor-pointer"
+                    >
+                      <ArrowRight className="w-3.5 h-3.5" />
+                      Transfer Handover
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleExportSingleIssuePdf(selectedIssue)}
+                      className="inline-flex items-center gap-1 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 text-slate-700 dark:text-slate-200 text-2xs font-bold px-2.5 py-1.5 rounded-xl transition cursor-pointer"
+                    >
+                      <Download className="w-3.5 h-3.5" /> PDF Dossier
+                    </button>
+                    <button
+                      onClick={() => window.print()}
+                      className="inline-flex items-center gap-1 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 text-slate-700 dark:text-slate-200 text-2xs font-bold px-2.5 py-1.5 rounded-xl transition cursor-pointer"
+                    >
+                      <Printer className="w-3.5 h-3.5" /> Print Sheet
+                    </button>
                   </div>
                 </div>
               </div>
@@ -1935,6 +2475,138 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin }: Issu
                 )}
               </div>
 
+              {/* PART 4: STATUS HISTORY & USER TRACKER AUDIT TRAIL */}
+              <div className="space-y-3">
+                <div className="bg-slate-100 dark:bg-slate-900/80 px-3 py-1.5 rounded-lg border-l-4 border-blue-600 flex justify-between items-center">
+                  <h3 className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                    <History className="w-3.5 h-3.5 text-blue-600" />
+                    PART 4: Status History & User Tracker Audit Trail
+                  </h3>
+                  <button
+                    onClick={() => {
+                      setHistoryNewStatusInput(selectedIssue.currentStatus);
+                      setShowHistoryModal(true);
+                    }}
+                    className="no-print text-2xs font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 bg-blue-50 dark:bg-blue-950/60 px-2.5 py-1 rounded-lg border border-blue-200 dark:border-blue-800 cursor-pointer"
+                  >
+                    <Plus className="w-3 h-3" /> Log Status Update / Change Note
+                  </button>
+                </div>
+
+                {(!selectedIssue.history || selectedIssue.history.length === 0) ? (
+                  <div className="bg-slate-50 dark:bg-slate-900/30 p-4 rounded-xl border border-dashed border-slate-200 dark:border-slate-700 text-center text-xs text-slate-400">
+                    No status updates logged yet. Initial submission recorded on {selectedIssue.submittedDate} by {selectedIssue.submittedBy}.
+                  </div>
+                ) : (
+                  <div className="space-y-2.5 relative before:absolute before:inset-0 before:left-3.5 before:w-0.5 before:bg-blue-200 dark:before:bg-blue-900/60 before:z-0">
+                    {selectedIssue.history.map((hist, hIdx) => (
+                      <div
+                        key={hist.id || hIdx}
+                        className="relative z-10 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-xl shadow-xs text-xs space-y-1.5 ml-7"
+                      >
+                        <div className="absolute -left-[31px] top-3.5 w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center text-[9px] font-bold shadow-xs">
+                          {selectedIssue.history.length - hIdx}
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 border-b border-slate-100 dark:border-slate-800 pb-1.5">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-extrabold text-slate-900 dark:text-white flex items-center gap-1 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-[11px]">
+                              <UserIcon className="w-3 h-3 text-blue-600" />
+                              {hist.user}
+                            </span>
+                            <span className="text-[10px] font-mono font-bold text-slate-400">
+                              {hist.timestamp}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 uppercase">
+                              {hist.changeType || 'Status Change'}
+                            </span>
+                            {hist.previousStatus !== hist.newStatus && (
+                              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                                {hist.previousStatus} → {hist.newStatus}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <p className="text-slate-700 dark:text-slate-300 leading-relaxed font-sans text-xs">
+                          {hist.notes}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* PART 5: LESSONS LEARNED & RETROSPECTIVE REVIEW */}
+              <div className="space-y-3">
+                <div className="bg-slate-100 dark:bg-slate-900/80 px-3 py-1.5 rounded-lg border-l-4 border-teal-600 flex justify-between items-center">
+                  <h3 className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                    <BookOpen className="w-3.5 h-3.5 text-teal-600" />
+                    PART 5: Lessons Learned & Retrospective Review
+                  </h3>
+                  <button
+                    onClick={() => {
+                      setLessonsInput(selectedIssue.lessonsLearned || '');
+                      setReviewNotesInput(selectedIssue.reviewNotes || '');
+                      setShowLessonsModal(true);
+                    }}
+                    className="no-print text-2xs font-bold text-teal-700 dark:text-teal-300 hover:underline flex items-center gap-1 bg-teal-50 dark:bg-teal-950/60 px-2.5 py-1 rounded-lg border border-teal-200 dark:border-teal-800 cursor-pointer"
+                  >
+                    <PenTool className="w-3 h-3" /> Record / Edit Lessons Learned
+                  </button>
+                </div>
+
+                {selectedIssue.lessonsLearned ? (
+                  <div className="bg-gradient-to-br from-teal-50/60 to-emerald-50/40 dark:from-teal-950/30 dark:to-emerald-950/20 p-4 rounded-xl border border-teal-200/80 dark:border-teal-800/50 space-y-2.5">
+                    <div className="flex justify-between items-center border-b border-teal-200/60 dark:border-teal-800/40 pb-2">
+                      <div className="flex items-center gap-1.5 text-teal-800 dark:text-teal-300 text-xs font-black uppercase tracking-wider">
+                        <Sparkles className="w-4 h-4 text-teal-600 dark:text-teal-400 shrink-0" />
+                        Key Lesson & Strategic Risk Prevention Takeaway
+                      </div>
+                      {selectedIssue.lessonsLearnedUpdatedBy && (
+                        <div className="text-[10px] font-mono text-teal-700 dark:text-teal-400 font-bold">
+                          Logged By: {selectedIssue.lessonsLearnedUpdatedBy} {selectedIssue.lessonsLearnedUpdatedAt ? `(${selectedIssue.lessonsLearnedUpdatedAt})` : ''}
+                        </div>
+                      )}
+                    </div>
+
+                    <p className="text-xs text-slate-800 dark:text-slate-100 leading-relaxed font-sans font-medium italic bg-white/80 dark:bg-slate-900/60 p-3 rounded-lg border border-teal-100 dark:border-teal-900/40">
+                      "{selectedIssue.lessonsLearned}"
+                    </p>
+
+                    {selectedIssue.reviewNotes && (
+                      <div className="pt-1">
+                        <span className="text-[10px] font-extrabold uppercase text-slate-400 block mb-1">
+                          Additional Case Review Notes & Recommendations
+                        </span>
+                        <p className="text-xs text-slate-700 dark:text-slate-300 font-sans leading-normal">
+                          {selectedIssue.reviewNotes}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="bg-slate-50 dark:bg-slate-900/30 p-5 rounded-xl border border-dashed border-teal-300 dark:border-teal-800/60 text-center space-y-2">
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      No explicit lesson learned recorded for this issue yet. Recording lessons learned allows future project managers to review resolved challenges and avoid repeating contractual or technical errors.
+                    </p>
+                    <button
+                      onClick={() => {
+                        setLessonsInput('');
+                        setReviewNotesInput('');
+                        setShowLessonsModal(true);
+                      }}
+                      className="no-print inline-flex items-center gap-1.5 text-xs font-bold text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-950/60 px-3 py-1.5 rounded-lg border border-teal-200 dark:border-teal-800 hover:bg-teal-100 dark:hover:bg-teal-900/80 cursor-pointer"
+                    >
+                      <PenTool className="w-3.5 h-3.5" /> Record Lessons Learned Now
+                    </button>
+                  </div>
+                )}
+              </div>
+
               {/* Sheet Footer Signatures */}
               <div className="pt-6 border-t border-slate-200 dark:border-slate-700 grid grid-cols-3 gap-4 text-center text-xs text-slate-500 dark:text-slate-400">
                 <div>
@@ -1979,16 +2651,35 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin }: Issu
                 </h3>
                 <button
                   onClick={() => setShowNewIssueModal(false)}
-                  className="text-slate-400 hover:text-slate-600 text-sm font-bold"
+                  className="text-slate-400 hover:text-slate-600 text-sm font-bold cursor-pointer"
                 >
                   ✕
                 </button>
               </div>
 
+              {/* Automatic Timestamp & User Tracker Info Box */}
+              <div className="bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 p-3 rounded-xl flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+                  <div>
+                    <span className="font-extrabold text-blue-900 dark:text-blue-200 block">Automatic Timestamp Tracking</span>
+                    <span className="text-[11px] text-blue-700 dark:text-blue-300">
+                      Captured Time: <strong className="font-mono font-bold">{new Date().toISOString().replace('T', ' ').substring(0, 16)}</strong>
+                    </span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">System Logger</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1">
+                    <UserIcon className="w-3 h-3 text-blue-600" /> {currentUsername}
+                  </span>
+                </div>
+              </div>
+
               <form onSubmit={handleCreateIssue} className="space-y-4 text-xs">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="font-bold block mb-1">Issue Reference Code</label>
+                    <label className="font-bold block mb-1">Issue Reference Code <span className="text-rose-500">*</span></label>
                     <input
                       type="text"
                       required
@@ -2016,7 +2707,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin }: Issu
                 </div>
 
                 <div>
-                  <label className="font-bold block mb-1">Issue Title / Subject</label>
+                  <label className="font-bold block mb-1">Issue Title / Subject <span className="text-rose-500">*</span></label>
                   <input
                     type="text"
                     required
@@ -2038,10 +2729,12 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin }: Issu
                     />
                   </div>
                   <div>
-                    <label className="font-bold block mb-1">Submitted By</label>
+                    <label className="font-bold block mb-1">Reporter / Submitted By <span className="text-rose-500">*</span></label>
                     <input
                       type="text"
-                      value={newIssue.submittedBy}
+                      required
+                      placeholder="Name or role of reporter..."
+                      value={newIssue.submittedBy || currentUsername}
                       onChange={(e) => setNewIssue({ ...newIssue, submittedBy: e.target.value })}
                       className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2"
                     />
@@ -2099,23 +2792,24 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin }: Issu
                 </div>
 
                 <div>
-                  <label className="font-bold block mb-1">Original Issue Statement & Description</label>
+                  <label className="font-bold block mb-1">Issue Description / Original Problem Statement <span className="text-rose-500">*</span></label>
                   <textarea
                     rows={3}
-                    placeholder="Describe the initial condition when submitted..."
+                    required
+                    placeholder="Provide a detailed description of the issue, site conditions, contract impact, or cause when submitted..."
                     value={newIssue.initialDescription}
                     onChange={(e) => setNewIssue({ ...newIssue, initialDescription: e.target.value })}
-                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2"
+                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2 focus:ring-2 focus:ring-blue-500 font-sans"
                   />
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="font-bold block mb-1">Priority</label>
+                    <label className="font-bold block mb-1">Priority Level <span className="text-rose-500">*</span></label>
                     <select
                       value={newIssue.priority}
                       onChange={(e) => setNewIssue({ ...newIssue, priority: e.target.value as any })}
-                      className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2"
+                      className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-bold"
                     >
                       <option value="Critical">Critical</option>
                       <option value="High">High</option>
@@ -2402,6 +3096,339 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin }: Issu
                   </button>
                 </div>
               </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* MODAL 4: RECORD / EDIT LESSONS LEARNED */}
+      <AnimatePresence>
+        {showLessonsModal && selectedIssue && (
+          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 max-w-xl w-full shadow-xl space-y-4 text-slate-800 dark:text-slate-100"
+            >
+              <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-700 pb-3">
+                <h3 className="text-base font-bold flex items-center gap-2 text-teal-700 dark:text-teal-400">
+                  <BookOpen className="w-5 h-5 text-teal-600" /> Record Lessons Learned & Retrospective Review
+                </h3>
+                <button
+                  onClick={() => setShowLessonsModal(false)}
+                  className="text-slate-400 hover:text-slate-600 text-sm font-bold cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="bg-teal-50 dark:bg-teal-950/30 p-3 rounded-xl border border-teal-100 dark:border-teal-900/50 text-xs space-y-1">
+                <span className="font-bold text-teal-900 dark:text-teal-200 block">Issue Code: {selectedIssue.issueCode}</span>
+                <span className="text-teal-800 dark:text-teal-300 font-medium truncate block">{selectedIssue.title}</span>
+                <span className="text-[10px] text-teal-600 dark:text-teal-400 font-mono block pt-1">
+                  Reviewer Attribution: <strong className="font-bold">{currentUsername}</strong>
+                </span>
+              </div>
+
+              <form onSubmit={handleSaveLessonsLearned} className="space-y-4 text-xs">
+                <div>
+                  <label className="font-bold block mb-1.5 text-slate-800 dark:text-slate-200">
+                    Key Lesson Learned & Risk Prevention Takeaway <span className="text-rose-500">*</span>
+                  </label>
+                  <textarea
+                    rows={4}
+                    required
+                    placeholder="Document root cause insights, procedural improvements, FIDIC clause interpretations, or contract management strategies learned from handling this issue..."
+                    value={lessonsInput}
+                    onChange={(e) => setLessonsInput(e.target.value)}
+                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-3 focus:ring-2 focus:ring-teal-500 font-sans leading-relaxed"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-bold block mb-1.5 text-slate-800 dark:text-slate-200">
+                    Additional Case Review Notes & Management Recommendations
+                  </label>
+                  <textarea
+                    rows={2}
+                    placeholder="Provide recommendations for future project stages, standard operating procedures, or steering committee policy changes..."
+                    value={reviewNotesInput}
+                    onChange={(e) => setReviewNotesInput(e.target.value)}
+                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-3 focus:ring-2 focus:ring-teal-500 font-sans"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-700">
+                  <button
+                    type="button"
+                    onClick={() => setShowLessonsModal(false)}
+                    className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 font-bold cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <BookOpen className="w-4 h-4" /> Save Lessons Learned
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* MODAL 5: LOG STATUS UPDATE / AUDIT NOTE */}
+      <AnimatePresence>
+        {showHistoryModal && selectedIssue && (
+          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 max-w-lg w-full shadow-xl space-y-4 text-slate-800 dark:text-slate-100"
+            >
+              <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-700 pb-3">
+                <h3 className="text-base font-bold flex items-center gap-2 text-blue-600 dark:text-blue-400">
+                  <History className="w-5 h-5 text-blue-600" /> Log Status Update & Audit Trail
+                </h3>
+                <button
+                  onClick={() => setShowHistoryModal(false)}
+                  className="text-slate-400 hover:text-slate-600 text-sm font-bold cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="bg-blue-50 dark:bg-blue-950/30 p-3 rounded-xl border border-blue-100 dark:border-blue-900/50 text-xs space-y-1">
+                <span className="font-bold text-blue-900 dark:text-blue-200 block">Issue Code: {selectedIssue.issueCode}</span>
+                <span className="text-blue-800 dark:text-blue-300 font-medium truncate block">{selectedIssue.title}</span>
+                <span className="text-[10px] text-blue-600 dark:text-blue-400 font-mono block pt-1">
+                  User User Tracker: <strong className="font-bold">{currentUsername}</strong>
+                </span>
+              </div>
+
+              <form onSubmit={handleAddManualHistoryNote} className="space-y-3 text-xs">
+                <div>
+                  <label className="font-bold block mb-1">New Issue Status (Optional Update)</label>
+                  <select
+                    value={historyNewStatusInput || selectedIssue.currentStatus}
+                    onChange={(e) => setHistoryNewStatusInput(e.target.value)}
+                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-2.5"
+                  >
+                    <option value="Submitted / Under Review">Submitted / Under Review</option>
+                    <option value="In Progress / Evaluation">In Progress / Evaluation</option>
+                    <option value="Transferred / Escalated">Transferred / Escalated</option>
+                    <option value="Resolved / Approved">Resolved / Approved</option>
+                    <option value="Rejected / Closed">Rejected / Closed</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="font-bold block mb-1">
+                    Status Change Reason / Progress Note <span className="text-rose-500">*</span>
+                  </label>
+                  <textarea
+                    rows={3}
+                    required
+                    placeholder="Enter audit trail comments, action items completed, meeting outcomes, or status update explanations..."
+                    value={historyNoteInput}
+                    onChange={(e) => setHistoryNoteInput(e.target.value)}
+                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-3 focus:ring-2 focus:ring-blue-500 font-sans"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-700">
+                  <button
+                    type="button"
+                    onClick={() => setShowHistoryModal(false)}
+                    className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 font-bold cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <History className="w-4 h-4" /> Log History Entry
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* MODAL 6: LESSONS LEARNED & RESOLVED ISSUES ARCHIVE REPOSITORY */}
+      <AnimatePresence>
+        {showArchiveModal && (
+          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl space-y-4 text-slate-800 dark:text-slate-100"
+            >
+              <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-700 pb-3">
+                <div>
+                  <h3 className="text-base font-bold flex items-center gap-2 text-teal-700 dark:text-teal-400">
+                    <BookOpen className="w-5 h-5 text-teal-600" /> Resolved Issue Records & Lessons Learned Repository
+                  </h3>
+                  <p className="text-2xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Archived resolved and approved project issues stored for institutional knowledge, risk mitigation, and future contract reference.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowArchiveModal(false)}
+                  className="text-slate-400 hover:text-slate-600 text-sm font-bold cursor-pointer p-1"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Archive Search Bar */}
+              <div className="relative">
+                <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Filter archived issues or search lessons learned keywords..."
+                  value={archiveSearchQuery}
+                  onChange={(e) => setArchiveSearchQuery(e.target.value)}
+                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl pl-9 pr-3 py-2 text-xs outline-none focus:ring-2 focus:ring-teal-500 text-slate-800 dark:text-slate-100"
+                />
+              </div>
+
+              {/* Archived Issues List */}
+              <div className="space-y-3 max-h-[55vh] overflow-y-auto pr-1">
+                {(() => {
+                  const filteredArchive = resolvedIssuesList.filter(item => 
+                    (item.title || '').toLowerCase().includes(archiveSearchQuery.toLowerCase()) ||
+                    (item.issueCode || '').toLowerCase().includes(archiveSearchQuery.toLowerCase()) ||
+                    (item.lessonsLearned || '').toLowerCase().includes(archiveSearchQuery.toLowerCase()) ||
+                    (item.category || '').toLowerCase().includes(archiveSearchQuery.toLowerCase())
+                  );
+
+                  if (filteredArchive.length === 0) {
+                    return (
+                      <div className="bg-slate-50 dark:bg-slate-900/40 p-8 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 text-center space-y-2">
+                        <BookOpen className="w-8 h-8 text-slate-300 dark:text-slate-600 mx-auto" />
+                        <h4 className="text-xs font-bold text-slate-600 dark:text-slate-400">No Resolved Issues or Lessons Learned Found</h4>
+                        <p className="text-2xs text-slate-400 max-w-md mx-auto">
+                          When project issues are marked as "Resolved / Approved" or "Rejected / Closed", they are automatically removed from the active log table and stored here for long-term records and lessons learned.
+                        </p>
+                      </div>
+                    );
+                  }
+
+                  return filteredArchive.map((item) => (
+                    <div 
+                      key={item.id}
+                      className="bg-slate-50/80 dark:bg-slate-900/50 border border-slate-200/80 dark:border-slate-700/80 p-4 rounded-xl space-y-2.5 transition hover:border-teal-300 dark:hover:border-teal-700"
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/60 dark:border-slate-800 pb-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-mono font-extrabold text-xs text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-950 px-2 py-0.5 rounded border border-teal-200 dark:border-teal-800">
+                            {item.issueCode}
+                          </span>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 uppercase">
+                            {item.currentStatus}
+                          </span>
+                          <span className="text-[10px] text-slate-500 font-semibold bg-white dark:bg-slate-800 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700">
+                            {item.category}
+                          </span>
+                        </div>
+
+                        <div className="text-2xs text-slate-400 font-mono">
+                          Submitted: {item.submittedDate} • By: {item.submittedBy}
+                        </div>
+                      </div>
+
+                      <div>
+                        <h4 className="font-bold text-xs text-slate-900 dark:text-slate-100">{item.title}</h4>
+                        <p className="text-2xs text-slate-600 dark:text-slate-300 mt-0.5 line-clamp-2">{item.initialDescription}</p>
+                      </div>
+
+                      {item.lessonsLearned ? (
+                        <div className="bg-gradient-to-r from-teal-50 to-emerald-50 dark:from-teal-950/40 dark:to-emerald-950/30 p-3 rounded-lg border border-teal-200/60 dark:border-teal-800/40 space-y-1">
+                          <div className="flex justify-between items-center text-[10px] font-bold text-teal-800 dark:text-teal-300 uppercase tracking-wider">
+                            <span className="flex items-center gap-1">
+                              <Sparkles className="w-3.5 h-3.5 text-teal-600" /> Recorded Lesson Learned
+                            </span>
+                            {item.lessonsLearnedUpdatedBy && (
+                              <span className="font-mono text-teal-600 dark:text-teal-400">By {item.lessonsLearnedUpdatedBy}</span>
+                            )}
+                          </div>
+                          <p className="text-xs text-slate-800 dark:text-slate-200 font-medium italic">
+                            "{item.lessonsLearned}"
+                          </p>
+                          {item.reviewNotes && (
+                            <p className="text-2xs text-slate-600 dark:text-slate-400 pt-1 border-t border-teal-100 dark:border-teal-900/40">
+                              <strong>Review Notes:</strong> {item.reviewNotes}
+                            </p>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="bg-amber-50 dark:bg-amber-950/30 p-2.5 rounded-lg border border-amber-200/60 dark:border-amber-800/40 text-2xs text-amber-800 dark:text-amber-300 flex items-center justify-between">
+                          <span>No explicit lesson learned narrative recorded for this resolved issue yet.</span>
+                          <button
+                            onClick={() => {
+                              setSelectedIssueId(item.id);
+                              setLessonsInput('');
+                              setReviewNotesInput('');
+                              setShowLessonsModal(true);
+                            }}
+                            className="text-2xs font-bold text-teal-700 dark:text-teal-300 underline cursor-pointer"
+                          >
+                            Add Lesson Learned Now
+                          </button>
+                        </div>
+                      )}
+
+                      <div className="flex justify-between items-center pt-1 text-2xs">
+                        <div className="flex items-center gap-3 text-slate-500 dark:text-slate-400 font-mono">
+                          <span>Financial: Br. {(item.financialImpactEtb || 0).toLocaleString()}</span>
+                          <span>Time: {item.timeImpactDays || 0} Days</span>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => {
+                              setSelectedIssueId(item.id);
+                              setLessonsInput(item.lessonsLearned || '');
+                              setReviewNotesInput(item.reviewNotes || '');
+                              setShowLessonsModal(true);
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800 font-bold hover:bg-teal-100 cursor-pointer"
+                          >
+                            Edit Lessons Learned
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedIssueId(item.id);
+                              setShowArchiveModal(false);
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold hover:bg-slate-300 cursor-pointer"
+                          >
+                            View Details
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ));
+                })()}
+              </div>
+
+              <div className="flex justify-between items-center pt-3 border-t border-slate-100 dark:border-slate-700 text-xs">
+                <span className="text-slate-400 text-2xs">Total Archived Records: {resolvedIssuesList.length}</span>
+                <button
+                  onClick={() => setShowArchiveModal(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 font-bold text-slate-800 dark:text-slate-200 cursor-pointer"
+                >
+                  Close Repository
+                </button>
+              </div>
             </motion.div>
           </div>
         )}
