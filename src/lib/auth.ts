@@ -1,3 +1,6 @@
+import { auth as firebaseAuth, googleProvider } from './firebase.ts';
+import { onAuthStateChanged, signInWithPopup, signOut as firebaseSignOut, User as FirebaseUser } from 'firebase/auth';
+
 export interface User {
   uid: string;
   email: string | null;
@@ -5,13 +8,7 @@ export interface User {
   getIdToken: (forceRefresh?: boolean) => Promise<string>;
 }
 
-let currentUser: User | null = {
-  uid: 'admin_user',
-  email: 'admin@era.gov.et',
-  displayName: 'ERA Administrator',
-  getIdToken: async () => 'standalone_token_era_admin',
-};
-
+let currentUser: User | null = null;
 const authListeners: Array<(user: User | null) => void> = [];
 
 export const auth = {
@@ -22,28 +19,48 @@ export const auth = {
 
 export function initAuth(
   onAuthSuccess?: (user: User, token: string) => void,
-  _onAuthFailure?: () => void
+  onAuthFailure?: () => void
 ): () => void {
-  if (currentUser) {
-    onAuthSuccess?.(currentUser, 'standalone_token_era_admin');
-  }
-  authListeners.forEach(listener => listener(currentUser));
+  const unsubscribe = onAuthStateChanged(firebaseAuth, async (fbUser: FirebaseUser | null) => {
+    if (fbUser) {
+      currentUser = {
+        uid: fbUser.uid,
+        email: fbUser.email,
+        displayName: fbUser.displayName || fbUser.email?.split('@')[0] || 'User',
+        getIdToken: (forceRefresh?: boolean) => fbUser.getIdToken(forceRefresh),
+      };
+      const token = await fbUser.getIdToken();
+      onAuthSuccess?.(currentUser, token);
+    } else {
+      currentUser = null;
+      onAuthFailure?.();
+    }
+    authListeners.forEach(listener => listener(currentUser));
+  });
 
-  return () => {};
+  return unsubscribe;
 }
 
 export async function googleSignIn(): Promise<User | null> {
-  currentUser = {
-    uid: 'admin_user',
-    email: 'admin@era.gov.et',
-    displayName: 'ERA Administrator',
-    getIdToken: async () => 'standalone_token_era_admin',
-  };
-  authListeners.forEach(listener => listener(currentUser));
-  return currentUser;
+  try {
+    const result = await signInWithPopup(firebaseAuth, googleProvider);
+    const fbUser = result.user;
+    currentUser = {
+      uid: fbUser.uid,
+      email: fbUser.email,
+      displayName: fbUser.displayName || fbUser.email?.split('@')[0] || 'User',
+      getIdToken: (forceRefresh?: boolean) => fbUser.getIdToken(forceRefresh),
+    };
+    authListeners.forEach(listener => listener(currentUser));
+    return currentUser;
+  } catch (error) {
+    console.error("Firebase Google Sign-In error:", error);
+    throw error;
+  }
 }
 
 export async function signOutUser(): Promise<void> {
+  await firebaseSignOut(firebaseAuth);
   currentUser = null;
   authListeners.forEach(listener => listener(currentUser));
 }
@@ -51,3 +68,4 @@ export async function signOutUser(): Promise<void> {
 export async function getAccessToken(): Promise<string | null> {
   return currentUser ? currentUser.getIdToken() : null;
 }
+

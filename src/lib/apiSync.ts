@@ -1,4 +1,6 @@
 import { Project, User as AppUser, ApprovalRequest } from '../types';
+import { db, auth } from './firebase';
+import { doc, setDoc, deleteDoc, getDocs, collection } from 'firebase/firestore';
 
 export enum OperationType {
   CREATE = 'create',
@@ -7,6 +9,44 @@ export enum OperationType {
   LIST = 'list',
   GET = 'get',
   WRITE = 'write',
+}
+
+export interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
+  };
+}
+
+export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData?.map(provider => ({
+        providerId: provider.providerId,
+        email: provider.email,
+      })) || []
+    },
+    operationType,
+    path
+  };
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
 }
 
 let syncSuspendedState = false;
@@ -20,9 +60,13 @@ export async function reactivateSync(): Promise<void> {
 }
 
 /**
- * Robust, self-healing project sync function that handles Relational REST Backend Sync.
+ * Robust, self-healing project sync function that handles Firebase Cloud Firestore & REST Backend Sync.
  */
 export async function safeSyncProject(proj: Project, isBackgroundQueueSync = false): Promise<void> {
+  if (!proj.lastModifiedAt) {
+    proj.lastModifiedAt = new Date().toISOString();
+  }
+
   // Clear from deleted IDs set if re-created or updated
   try {
     const deletedStr = localStorage.getItem('era_deleted_project_ids') || '[]';
@@ -36,6 +80,35 @@ export async function safeSyncProject(proj: Project, isBackgroundQueueSync = fal
   // Emit event for Drive Auto-Sync to pick up
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('local_project_mutated'));
+  }
+
+  // Firestore Sync
+  if (auth.currentUser) {
+    try {
+      await setDoc(doc(db, 'projects', proj.id), {
+        id: proj.id,
+        name: proj.name || '',
+        client: proj.client || '',
+        consultant: proj.consultant || '',
+        contractor: proj.contractor || '',
+        signDate: proj.signDate || '',
+        startDate: proj.startDate || '',
+        origDays: String(proj.origDays || 0),
+        eotDays: String(proj.eotDays || 0),
+        variation: String(proj.variation || 0),
+        origAmount: String(proj.origAmount || 0),
+        lengthKm: String(proj.lengthKm || 0),
+        classification: proj.classification || '',
+        contractType: proj.contractType || '',
+        programDirectorate: proj.programDirectorate || '',
+        pmo: proj.pmo || '',
+        physicalProgress: String(proj.physicalProgress || 0),
+        provisionalSum: String(proj.provisionalSum || 0),
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+    } catch (fsErr) {
+      console.warn('Firestore sync failed:', fsErr);
+    }
   }
 
   // Relational Database Sync: custom Express REST API (/api/projects/sync)
@@ -63,6 +136,14 @@ export async function safeSyncProject(proj: Project, isBackgroundQueueSync = fal
       throw new Error(errJson.error || `HTTP ${response.status} Server Error`);
     }
 
+    // Clean from offline queue if present
+    try {
+      const queueStr = localStorage.getItem('era_offline_sync_queue') || '[]';
+      const queue: Project[] = JSON.parse(queueStr);
+      const filtered = queue.filter(p => p.id !== proj.id);
+      localStorage.setItem('era_offline_sync_queue', JSON.stringify(filtered));
+    } catch {}
+
     console.log('Project successfully synchronized with backend REST API.');
   })();
 
@@ -87,7 +168,7 @@ export async function safeSyncProject(proj: Project, isBackgroundQueueSync = fal
 }
 
 /**
- * Deletes a project from standalone Express backend.
+ * Deletes a project from standalone Express backend and Firestore.
  */
 export async function safeDeleteProject(id: string): Promise<void> {
   // Store deleted ID locally so real-time listeners don't resurrect it
@@ -114,6 +195,13 @@ export async function safeDeleteProject(id: string): Promise<void> {
 
   const syncPromises: Promise<any>[] = [];
 
+  // Delete from Firestore
+  if (auth.currentUser) {
+    syncPromises.push(
+      deleteDoc(doc(db, 'projects', id)).catch(fsErr => handleFirestoreError(fsErr, OperationType.DELETE, `projects/${id}`))
+    );
+  }
+
   // Delete from relational REST API backend
   syncPromises.push(
     fetch(`/api/projects/${id}`, { method: 'DELETE' })
@@ -132,7 +220,7 @@ export async function safeDeleteProject(id: string): Promise<void> {
 }
 
 /**
- * Fetches all synchronized projects from standalone Express backend.
+ * Fetches all synchronized projects from standalone Express backend or Firestore.
  */
 export async function safeFetchProjects(): Promise<Project[] | null> {
   try {
@@ -146,6 +234,21 @@ export async function safeFetchProjects(): Promise<Project[] | null> {
     }
   } catch (err: any) {
     console.warn('Backend DB Fetch failed:', err?.message || err);
+  }
+
+  if (auth.currentUser) {
+    try {
+      const querySnapshot = await getDocs(collection(db, 'projects'));
+      const projects: Project[] = [];
+      querySnapshot.forEach(docSnap => {
+        projects.push(docSnap.data() as Project);
+      });
+      if (projects.length > 0) {
+        return projects;
+      }
+    } catch (fsErr) {
+      handleFirestoreError(fsErr, OperationType.LIST, 'projects');
+    }
   }
 
   return null;
@@ -261,3 +364,4 @@ export async function safeFetchConfig(): Promise<{ pmos: string[], directorates:
   }
   return null;
 }
+
