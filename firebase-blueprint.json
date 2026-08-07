@@ -1,0 +1,53 @@
+{
+  "entities": {
+    "Project": {
+      "title": "Project",
+      "description": "Road project infrastructure metadata and metrics",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 255 },
+        "client": { "type": "string", "maxLength": 255 },
+        "consultant": { "type": "string", "maxLength": 255 },
+        "contractor": { "type": "string", "maxLength": 255 },
+        "signDate": { "type": "string", "maxLength": 50 },
+        "startDate": { "type": "string", "maxLength": 50 },
+        "origDays": { "type": "string", "maxLength": 50 },
+        "eotDays": { "type": "string", "maxLength": 50 },
+        "variation": { "type": "string", "maxLength": 50 },
+        "origAmount": { "type": "string", "maxLength": 50 },
+        "lengthKm": { "type": "string", "maxLength": 50 },
+        "classification": { "type": "string", "maxLength": 100 },
+        "contractType": { "type": "string", "maxLength": 100 },
+        "programDirectorate": { "type": "string", "maxLength": 100 },
+        "pmo": { "type": "string", "maxLength": 100 },
+        "physicalProgress": { "type": "string", "maxLength": 50 },
+        "provisionalSum": { "type": "string", "maxLength": 50 },
+        "updatedAt": { "type": "string", "maxLength": 100 }
+      },
+      "required": ["id", "name", "client"]
+    },
+    "User": {
+      "title": "User",
+      "description": "System user account profile",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 255 },
+        "displayName": { "type": "string", "maxLength": 255 },
+        "role": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["uid", "email"]
+    }
+  },
+  "firestore": {
+    "/projects/{projectId}": {
+      "schema": { "$ref": "#/entities/Project" },
+      "description": "Collection of road construction projects"
+    },
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Collection of user profile entries"
+    }
+  }
+}

@@ -4,45 +4,13 @@ import { createServer } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { createServer as createViteServer } from "vite";
 import { requireAuth, AuthRequest } from './src/middleware/auth.ts';
-import { getOrCreateUser } from './src/db/users.ts';
 import { GoogleGenAI } from '@google/genai';
-import { db as pgDb, withRetry } from './src/db/index.ts';
-import { dbProjects, capturedLogs, formDrafts } from './src/db/schema.ts';
-import { eq, desc } from 'drizzle-orm';
 
 async function startServer() {
   const app = express();
   const httpServer = createServer(app);
   const PORT = 3000;
 
-function isTimeoutError(error: any) {
-  if (!error) return false;
-  
-  try {
-    const errStr = String(error) + " " + JSON.stringify(error, Object.getOwnPropertyNames(error));
-    if (errStr.includes('ETIMEDOUT') || errStr.includes('connect ETIMEDOUT') || errStr.includes('timeout') || errStr.includes('Connection') || errStr.includes('ECONNREFUSED') || errStr.includes('ENOTFOUND') || errStr.includes('EHOSTUNREACH')) {
-      return true;
-    }
-  } catch (e) {}
-  
-  const msg = error.message || '';
-  const code = error.code || '';
-  const causeMsg = error.cause?.message || '';
-  const causeCode = error.cause?.code || '';
-  const errorno = error.errorno || error.cause?.errorno || '';
-  
-  return msg.includes('ETIMEDOUT') || 
-         code === 'ETIMEDOUT' || 
-         code === 'ENOTFOUND' ||
-         code === 'EHOSTUNREACH' ||
-         causeMsg.includes('ETIMEDOUT') || 
-         causeCode === 'ETIMEDOUT' ||
-         errorno === 'ETIMEDOUT' ||
-         msg.includes('Connection') || 
-         msg.includes('timeout');
-}
-
-  
   app.use(express.json({ limit: '100mb' })); // support extremely large multi-device project payloads safely
   app.use(express.urlencoded({ limit: '100mb', extended: true }));
 
@@ -88,6 +56,9 @@ function isTimeoutError(error: any) {
       .trim();
   };
 
+  // Captured sync logs in-memory buffer
+  const capturedLogsMemory: any[] = [];
+
   // Helper to log all sync actions (success, failure, validation errors)
   const logSyncAttempt = async (
     recordId: string | null,
@@ -99,20 +70,20 @@ function isTimeoutError(error: any) {
   ) => {
     try {
       const ip = (req.headers["x-forwarded-for"] as string) || req.socket.remoteAddress || "unknown-ip";
-      await withRetry(() => pgDb.insert(capturedLogs).values({
+      const logEntry = {
+        id: capturedLogsMemory.length + 1,
         recordId,
         recordType,
         status,
         payload: payload ? JSON.stringify(payload) : null,
         errorMessage,
         ipAddress: ip,
-      }));
+        createdAt: new Date().toISOString()
+      };
+      capturedLogsMemory.unshift(logEntry);
+      if (capturedLogsMemory.length > 50) capturedLogsMemory.pop();
       console.log(`[Captured Sync Log] Record: ${recordId}, Status: ${status}, Info: ${errorMessage || 'None'}`);
     } catch (err: any) {
-      if (isTimeoutError(err)) {
-        /* db unreachable, ignored */
-        return;
-      }
       console.error("Failed to write to captured_logs:", err);
     }
   };
@@ -122,21 +93,18 @@ function isTimeoutError(error: any) {
     res.json({ status: "ok" });
   });
 
-  // Example secured route initializing user in db
+  // Example secured route initializing user
   app.post("/api/login", requireAuth, async (req: AuthRequest, res) => {
     try {
       if (req.user) {
-        const dbUser = await getOrCreateUser(req.user.uid, req.user.email || '');
-        res.json({ success: true, user: dbUser });
+        res.json({
+          success: true,
+          user: { uid: req.user.uid, email: req.user.email || '', id: 1, createdAt: new Date() }
+        });
         return;
       }
       res.status(400).json({ error: 'Invalid user payload' });
     } catch (error: any) {
-      if (isTimeoutError(error)) {
-        console.warn("Database connection timed out for login.");
-        res.json({ success: true, user: { uid: req.user?.uid, email: req.user?.email, id: 0, createdAt: new Date() } });
-        return;
-      }
       console.error(error);
       res.status(500).json({ error: 'Failed to process login' });
     }
@@ -282,42 +250,17 @@ function isTimeoutError(error: any) {
     });
   };
 
-  // REST API: GET all synced projects from relational Cloud SQL database / memory fallback
+  // In-memory drafts map (key: `${uid}:${formId}`)
+  const inMemoryDrafts = new Map<string, { formId: string; data: any; updatedAt: Date }>();
+
+  // REST API: GET all synced projects from memory
   app.get("/api/projects/sync", rateLimiter, async (req, res) => {
-    try {
-      const allProjects = await withRetry(() => pgDb.select().from(dbProjects));
-      const filtered = allProjects.filter(p => p.id && !p.id.startsWith('__sys_'));
-      filtered.forEach(p => {
-        try {
-          const parsed = p.data ? JSON.parse(p.data) : p;
-          if (parsed?.id) inMemoryProjects.set(parsed.id, parsed);
-        } catch {
-          if (p?.id) inMemoryProjects.set(p.id, p);
-        }
-      });
-    } catch (error: any) {
-      /* DB unreachable, serve in-memory projects */
-    }
     const data = Array.from(inMemoryProjects.values());
     res.json({ success: true, data });
   });
 
   // REST API: GET & POST users sync
   app.get("/api/users/sync", rateLimiter, async (req, res) => {
-    try {
-      const records = await withRetry(() => pgDb.select().from(dbProjects).where(eq(dbProjects.id, '__sys_users__')));
-      if (records.length > 0 && records[0].data) {
-        const dbUsers = JSON.parse(records[0].data);
-        if (Array.isArray(dbUsers) && dbUsers.length > 0) {
-          const map = new Map<string, any>();
-          inMemoryUsers.forEach(u => { if (u?.username) map.set(u.username.toLowerCase(), u); });
-          dbUsers.forEach(u => { if (u?.username) map.set(u.username.toLowerCase(), u); });
-          inMemoryUsers = Array.from(map.values());
-        }
-      }
-    } catch (error: any) {
-      /* DB unreachable, serve in-memory users */
-    }
     res.json({ success: true, data: inMemoryUsers });
   });
 
@@ -331,41 +274,11 @@ function isTimeoutError(error: any) {
     }
 
     broadcastEvent('users_update', inMemoryUsers);
-
-    try {
-      const stringifiedData = JSON.stringify(inMemoryUsers);
-      await withRetry(() => pgDb.insert(dbProjects).values({
-        id: '__sys_users__',
-        name: 'System Users',
-        client: 'System',
-        data: stringifiedData,
-        updatedAt: new Date()
-      }).onConflictDoUpdate({
-        target: dbProjects.id,
-        set: { data: stringifiedData, updatedAt: new Date() }
-      }));
-      res.json({ success: true, message: "Users saved and synchronized", data: inMemoryUsers });
-    } catch (error: any) {
-      res.json({ success: true, message: "Users saved in backend memory", data: inMemoryUsers });
-    }
+    res.json({ success: true, message: "Users saved in backend memory", data: inMemoryUsers });
   });
 
   // REST API: GET & POST approvals sync
   app.get("/api/approvals/sync", rateLimiter, async (req, res) => {
-    try {
-      const records = await withRetry(() => pgDb.select().from(dbProjects).where(eq(dbProjects.id, '__sys_approvals__')));
-      if (records.length > 0 && records[0].data) {
-        const dbApprovals = JSON.parse(records[0].data);
-        if (Array.isArray(dbApprovals) && dbApprovals.length > 0) {
-          const map = new Map<string, any>();
-          inMemoryApprovals.forEach(a => { if (a?.id) map.set(a.id, a); });
-          dbApprovals.forEach(a => { if (a?.id) map.set(a.id, a); });
-          inMemoryApprovals = Array.from(map.values());
-        }
-      }
-    } catch (error: any) {
-      /* DB unreachable, serve in-memory approvals */
-    }
     res.json({ success: true, data: inMemoryApprovals });
   });
 
@@ -379,35 +292,11 @@ function isTimeoutError(error: any) {
     }
 
     broadcastEvent('approvals_update', inMemoryApprovals);
-
-    try {
-      const stringifiedData = JSON.stringify(inMemoryApprovals);
-      await withRetry(() => pgDb.insert(dbProjects).values({
-        id: '__sys_approvals__',
-        name: 'System Approvals',
-        client: 'System',
-        data: stringifiedData,
-        updatedAt: new Date()
-      }).onConflictDoUpdate({
-        target: dbProjects.id,
-        set: { data: stringifiedData, updatedAt: new Date() }
-      }));
-      res.json({ success: true, message: "Approvals saved and synchronized", data: inMemoryApprovals });
-    } catch (error: any) {
-      res.json({ success: true, message: "Approvals saved in backend memory", data: inMemoryApprovals });
-    }
+    res.json({ success: true, message: "Approvals saved in backend memory", data: inMemoryApprovals });
   });
 
   // REST API: GET & POST config sync
   app.get("/api/config/sync", rateLimiter, async (req, res) => {
-    try {
-      const records = await withRetry(() => pgDb.select().from(dbProjects).where(eq(dbProjects.id, '__sys_config__')));
-      if (records.length > 0 && records[0].data) {
-        inMemoryConfig = JSON.parse(records[0].data);
-      }
-    } catch (error: any) {
-      /* DB unreachable, serve in-memory config */
-    }
     res.json({ success: true, data: inMemoryConfig });
   });
 
@@ -416,26 +305,10 @@ function isTimeoutError(error: any) {
     inMemoryConfig = configData;
 
     broadcastEvent('config_update', inMemoryConfig);
-
-    try {
-      const stringifiedData = JSON.stringify(inMemoryConfig);
-      await withRetry(() => pgDb.insert(dbProjects).values({
-        id: '__sys_config__',
-        name: 'System Config',
-        client: 'System',
-        data: stringifiedData,
-        updatedAt: new Date()
-      }).onConflictDoUpdate({
-        target: dbProjects.id,
-        set: { data: stringifiedData, updatedAt: new Date() }
-      }));
-      res.json({ success: true, message: "Config saved and synchronized", data: inMemoryConfig });
-    } catch (error: any) {
-      res.json({ success: true, message: "Config saved in backend memory", data: inMemoryConfig });
-    }
+    res.json({ success: true, message: "Config saved in backend memory", data: inMemoryConfig });
   });
 
-  // REST API: POST capture and sync project with transaction support and validation
+  // REST API: POST capture and sync project with validation
   app.post("/api/projects/sync", rateLimiter, async (req, res) => {
     const payload = req.body;
     const { id, name, client } = payload || {};
@@ -459,7 +332,7 @@ function isTimeoutError(error: any) {
       return;
     }
 
-    // 2. Input Sanitization (strips potentially malicious HTML/JS patterns)
+    // 2. Input Sanitization
     const sanitizedId = sanitizeString(id);
     const sanitizedName = sanitizeString(name);
     const sanitizedClient = sanitizeString(client);
@@ -483,57 +356,17 @@ function isTimeoutError(error: any) {
       pmo: sanitizedPmo
     };
 
-    const stringifiedData = JSON.stringify(sanitizedProjectPayload);
-
-    // Save into in-memory store immediately
+    // Save into in-memory store
     inMemoryProjects.set(sanitizedId, sanitizedProjectPayload);
 
-    // Broadcast real-time event to SSE clients immediately
+    // Broadcast real-time event
     broadcastEvent('project_update', sanitizedProjectPayload);
 
-    try {
-      // 3. Database operation wrapped inside SQL Transaction for atomic accuracy
-      await withRetry(() => pgDb.transaction(async (tx) => {
-        const valuesToUpsert = {
-          id: sanitizedId,
-          name: sanitizedName,
-          client: sanitizedClient,
-          consultant: sanitizedConsultant,
-          contractor: sanitizedContractor,
-          signDate: sanitizeString(payload.signDate),
-          startDate: sanitizeString(payload.startDate),
-          origDays: String(payload.origDays || 0),
-          eotDays: String(payload.eotDays || 0),
-          variation: String(payload.variation || 0),
-          origAmount: String(payload.origAmount || 0),
-          lengthKm: String(payload.lengthKm || 0),
-          classification: sanitizedClassification,
-          contractType: sanitizedContractType,
-          programDirectorate: sanitizedProgramDirectorate,
-          pmo: sanitizedPmo,
-          physicalProgress: String(payload.physicalProgress || 0),
-          provisionalSum: String(payload.provisionalSum || 0),
-          data: stringifiedData,
-          updatedAt: new Date()
-        };
-
-        await tx.insert(dbProjects).values(valuesToUpsert)
-          .onConflictDoUpdate({
-            target: dbProjects.id,
-            set: valuesToUpsert
-          });
-      }));
-
-      // Log successful sync
-      await logSyncAttempt(sanitizedId, 'project', 'success', payload, null, req);
-      
-      res.json({ success: true, message: "Project successfully captured, stored and synchronized with Backend Database.", data: sanitizedProjectPayload });
-    } catch (dbError: any) {
-      res.json({ success: true, message: "Project successfully captured in backend memory.", data: sanitizedProjectPayload });
-    }
+    await logSyncAttempt(sanitizedId, 'project', 'success', payload, null, req);
+    res.json({ success: true, message: "Project successfully captured in backend memory.", data: sanitizedProjectPayload });
   });
 
-  // REST API: DELETE project from Cloud SQL Database
+  // REST API: DELETE project
   const handleDeleteProjectRoute = async (req: express.Request, res: express.Response) => {
     const id = req.params.id;
     if (!id) {
@@ -543,35 +376,16 @@ function isTimeoutError(error: any) {
 
     inMemoryProjects.delete(id);
     broadcastEvent('project_delete', { id });
-
-    try {
-      await withRetry(() => pgDb.transaction(async (tx) => {
-        await tx.delete(dbProjects).where(eq(dbProjects.id, id));
-      }));
-      await logSyncAttempt(id, 'project', 'success', { deleted: true }, null, req);
-      res.json({ success: true, message: `Project ${id} successfully deleted from database.` });
-    } catch (dbError: any) {
-      res.json({ success: true, message: `Project ${id} deleted from backend memory.` });
-    }
+    await logSyncAttempt(id, 'project', 'success', { deleted: true }, null, req);
+    res.json({ success: true, message: `Project ${id} deleted from backend memory.` });
   };
 
   app.delete("/api/projects/:id", rateLimiter, handleDeleteProjectRoute);
   app.delete("/api/projects/sync/:id", rateLimiter, handleDeleteProjectRoute);
 
-  // REST API: GET captured sync logs for real-time visualization and diagnostics
+  // REST API: GET captured sync logs
   app.get("/api/sync-logs", rateLimiter, async (req, res) => {
-    try {
-      const logs = await withRetry(() => pgDb.select().from(capturedLogs).orderBy(desc(capturedLogs.id)).limit(20));
-      res.json({ success: true, logs });
-    } catch (error: any) {
-      if (isTimeoutError(error)) {
-        /* db unreachable, ignored */
-        res.json({ success: true, logs: [] });
-        return;
-      }
-      console.error("Failed to query sync logs:", error);
-      res.status(500).json({ error: "Failed to query system sync logs" });
-    }
+    res.json({ success: true, logs: capturedLogsMemory });
   });
 
   // REST API: GET draft for a given form ID
@@ -591,28 +405,22 @@ function isTimeoutError(error: any) {
       }
 
       const combinedId = `${uid}:${formId}`;
-      const draftRecords = await withRetry(() => pgDb.select().from(formDrafts).where(eq(formDrafts.id, combinedId)));
+      const record = inMemoryDrafts.get(combinedId);
 
-      if (draftRecords.length === 0) {
+      if (!record) {
         res.json({ success: true, draft: null });
         return;
       }
 
-      const record = draftRecords[0];
       res.json({
         success: true,
         draft: {
           formId: record.formId,
-          data: JSON.parse(record.data),
+          data: record.data,
           updatedAt: record.updatedAt,
         }
       });
     } catch (error: any) {
-      if (isTimeoutError(error)) {
-        console.warn("Database connection timed out for GET draft. Serving null.");
-        res.json({ success: true, draft: null });
-        return;
-      }
       console.error("Failed to retrieve draft:", error);
       res.status(500).json({ error: "Failed to retrieve draft from server" });
     }
@@ -623,7 +431,7 @@ function isTimeoutError(error: any) {
     try {
       const { formId } = req.params;
       const uid = req.user?.uid;
-      const payload = req.body; // should have { data: object, updatedAt: string_timestamp }
+      const payload = req.body;
 
       if (!uid) {
         res.status(401).json({ error: "Unauthorized" });
@@ -641,29 +449,16 @@ function isTimeoutError(error: any) {
       }
 
       const combinedId = `${uid}:${formId}`;
-      const stringifiedData = JSON.stringify(payload.data);
-
-      const valuesToUpsert = {
-        id: combinedId,
-        userId: uid,
+      const draftRecord = {
         formId,
-        data: stringifiedData,
+        data: payload.data,
         updatedAt: payload.updatedAt ? new Date(payload.updatedAt) : new Date(),
       };
 
-      await withRetry(() => pgDb.insert(formDrafts).values(valuesToUpsert)
-        .onConflictDoUpdate({
-          target: formDrafts.id,
-          set: valuesToUpsert
-        }));
+      inMemoryDrafts.set(combinedId, draftRecord);
 
       res.json({ success: true, message: "Draft saved on server." });
     } catch (error: any) {
-      if (isTimeoutError(error)) {
-        console.warn("Database connection timed out for POST draft.");
-        res.json({ success: true, message: "Draft saved on server (mock)." });
-        return;
-      }
       console.error("Failed to save draft:", error);
       res.status(500).json({ error: "Failed to save draft on server" });
     }
@@ -686,15 +481,10 @@ function isTimeoutError(error: any) {
       }
 
       const combinedId = `${uid}:${formId}`;
-      await withRetry(() => pgDb.delete(formDrafts).where(eq(formDrafts.id, combinedId)));
+      inMemoryDrafts.delete(combinedId);
 
       res.json({ success: true, message: "Draft successfully deleted from server." });
     } catch (error: any) {
-      if (isTimeoutError(error)) {
-        console.warn("Database connection timed out for DELETE draft.");
-        res.json({ success: true, message: "Draft deleted on server (mock)." });
-        return;
-      }
       console.error("Failed to delete draft:", error);
       res.status(500).json({ error: "Failed to delete draft from server" });
     }
@@ -713,32 +503,16 @@ function isTimeoutError(error: any) {
       }
 
       const combinedId = `${uid}:${formId}`;
-      const stringifiedData = JSON.stringify(data);
-
-      // Create an updatedAt time that is 5 minutes in the future to act as a "newer" server draft
       const futureTime = new Date(Date.now() + 5 * 60 * 1000);
 
-      const valuesToUpsert = {
-        id: combinedId,
-        userId: uid,
+      inMemoryDrafts.set(combinedId, {
         formId,
-        data: stringifiedData,
+        data,
         updatedAt: futureTime,
-      };
-
-      await withRetry(() => pgDb.insert(formDrafts).values(valuesToUpsert)
-        .onConflictDoUpdate({
-          target: formDrafts.id,
-          set: valuesToUpsert
-        }));
+      });
 
       res.json({ success: true, message: "Newer server draft simulated." });
     } catch (error: any) {
-      if (isTimeoutError(error)) {
-        console.warn("Database connection timed out for simulate server draft.");
-        res.json({ success: true, message: "Newer server draft simulated (mock)." });
-        return;
-      }
       console.error("Failed to simulate server draft:", error);
       res.status(500).json({ error: "Failed to simulate server draft" });
     }
